@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CreateAccountInputSchema,
-  type CreateAccountInput,
   type Account,
   accountsApi,
 } from '../lib/api'
@@ -11,26 +10,38 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
 
-const ACCOUNT_TYPES = [
+const ACCOUNT_TYPES: Array<{
+  value: 'cash' | 'bank' | 'credit' | 'savings'
+  label: string
+  icon: string
+}> = [
   { value: 'cash', label: 'Efectivo', icon: '💵' },
   { value: 'bank', label: 'Banco', icon: '🏦' },
   { value: 'credit', label: 'Crédito', icon: '💳' },
   { value: 'savings', label: 'Ahorros', icon: '🐷' },
-] as const
+]
 
 export function Accounts() {
   const { activeUserId } = useAuthStore()
-  const { accounts, setAccounts, addAccount, updateAccount } = useWalletStore()
+  const { accounts, setAccounts, updateAccount } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  type FormData = {
+    user_id: number
+    name: string
+    type: 'cash' | 'bank' | 'credit' | 'savings'
+    currency?: string
+    is_active?: boolean
+  }
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm<CreateAccountInput>({
+  } = useForm<FormData>({
     resolver: zodResolver(CreateAccountInputSchema),
     defaultValues: {
       user_id: activeUserId || 0,
@@ -60,12 +71,15 @@ export function Accounts() {
     }
   }
 
-  const onCreateAccount = async (data: CreateAccountInput) => {
+  const onCreateAccount = async (data: FormData) => {
     try {
       setError(null)
-      const response = await accountsApi.create({
-        ...data,
+      await accountsApi.create({
         user_id: activeUserId!,
+        name: data.name,
+        type: data.type,
+        currency: data.currency || 'AUD',
+        is_active: data.is_active ?? true,
       })
 
       // Recargar cuentas después de crear

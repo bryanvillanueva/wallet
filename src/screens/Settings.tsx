@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { LoadingBar } from '../components/LoadingBar'
 
 export function Settings() {
-  const { activeUserId, setActiveUserId, clearActiveUser } = useAuthStore()
+  const { activeUserId, clearActiveUser } = useAuthStore()
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 

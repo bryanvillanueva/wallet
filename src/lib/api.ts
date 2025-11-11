@@ -8,13 +8,18 @@ const BASE_URL = import.meta.env.VITE_API_BASE ?? 'https://wallet-api-production
 // ============================================================
 
 class ApiError extends Error {
+  status: number
+  data?: unknown
+
   constructor(
     message: string,
-    public status: number,
-    public data?: unknown
+    status: number,
+    data?: unknown
   ) {
     super(message)
     this.name = 'ApiError'
+    this.status = status
+    this.data = data
   }
 }
 
@@ -166,10 +171,10 @@ export const CreateAccountInputSchema = z.object({
   user_id: z.number(),
   name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   type: z.enum(['cash', 'bank', 'credit', 'savings'], {
-    errorMap: () => ({ message: 'Tipo de cuenta inválido' }),
+    message: 'Tipo de cuenta inválido',
   }),
-  currency: z.string().length(3, 'La moneda debe tener 3 letras').default('AUD'),
-  is_active: z.boolean().default(true),
+  currency: z.string().length(3, 'La moneda debe tener 3 letras').optional().default('AUD'),
+  is_active: z.boolean().optional().default(true),
 })
 
 export const UpdateAccountInputSchema = z.object({
