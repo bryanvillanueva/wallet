@@ -4,12 +4,18 @@ import { HealthBanner } from './components/HealthBanner'
 import { Onboarding } from './screens/Onboarding'
 import { Settings } from './screens/Settings'
 import { Accounts } from './screens/Accounts'
+import { Categories } from './screens/Categories'
+import { PayPeriods } from './screens/PayPeriods'
+import { Transactions } from './screens/Transactions'
+import { Savings } from './screens/Savings'
+import { SavingGoals } from './screens/SavingGoals'
+import { Summary } from './screens/Summary'
 
-type Screen = 'settings' | 'accounts'
+type Screen = 'summary' | 'settings' | 'accounts' | 'categories' | 'payPeriods' | 'transactions' | 'savings' | 'goals'
 
 function App() {
   const activeUserId = useAuthStore((state) => state.activeUserId)
-  const [currentScreen, setCurrentScreen] = useState<Screen>('settings')
+  const [currentScreen, setCurrentScreen] = useState<Screen>('summary')
 
   // Si no hay usuario activo, mostrar Onboarding
   if (!activeUserId) {
@@ -19,8 +25,20 @@ function App() {
   // Renderizar pantalla actual
   const renderScreen = () => {
     switch (currentScreen) {
+      case 'summary':
+        return <Summary />
       case 'accounts':
         return <Accounts />
+      case 'categories':
+        return <Categories />
+      case 'payPeriods':
+        return <PayPeriods />
+      case 'transactions':
+        return <Transactions />
+      case 'savings':
+        return <Savings />
+      case 'goals':
+        return <SavingGoals />
       case 'settings':
       default:
         return <Settings />
@@ -36,10 +54,20 @@ function App() {
 
       {/* Navigation bar */}
       <div className="px-4 pb-4">
-        <div className="max-w-4xl mx-auto glass-card-light dark:glass-card-dark rounded-2xl p-2 flex gap-2">
+        <div className="max-w-6xl mx-auto glass-card-light dark:glass-card-dark rounded-2xl p-2 flex flex-wrap gap-2">
+          <button
+            onClick={() => setCurrentScreen('summary')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'summary'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            📊 Resumen
+          </button>
           <button
             onClick={() => setCurrentScreen('settings')}
-            className={`flex-1 px-4 py-2 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
               currentScreen === 'settings'
                 ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
                 : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
@@ -49,13 +77,63 @@ function App() {
           </button>
           <button
             onClick={() => setCurrentScreen('accounts')}
-            className={`flex-1 px-4 py-2 rounded-xl text-[15px] font-medium transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
               currentScreen === 'accounts'
                 ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
                 : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
             }`}
           >
             🏦 Cuentas
+          </button>
+          <button
+            onClick={() => setCurrentScreen('categories')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'categories'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            🏷️ Categorías
+          </button>
+          <button
+            onClick={() => setCurrentScreen('payPeriods')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'payPeriods'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            📅 Quincenas
+          </button>
+          <button
+            onClick={() => setCurrentScreen('transactions')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'transactions'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            💳 Transacciones
+          </button>
+          <button
+            onClick={() => setCurrentScreen('savings')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'savings'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            💰 Ahorros
+          </button>
+          <button
+            onClick={() => setCurrentScreen('goals')}
+            className={`px-4 py-2 rounded-xl text-[13px] md:text-[15px] font-medium transition-all duration-300 ${
+              currentScreen === 'goals'
+                ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] text-white shadow-lg'
+                : 'text-[#666] dark:text-neutral-400 hover:bg-white/20'
+            }`}
+          >
+            🎯 Metas
           </button>
         </div>
       </div>

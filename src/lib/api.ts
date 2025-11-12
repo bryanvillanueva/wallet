@@ -230,6 +230,405 @@ export const accountsApi = {
 }
 
 // ============================================================
+// PHASE 3: CATEGORIES
+// ============================================================
+
+export const CategorySchema = z.object({
+  id: z.number(),
+  user_id: z.number().nullable(),
+  name: z.string(),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment']),
+})
+
+export const CreateCategoryInputSchema = z.object({
+  user_id: z.number().nullable().optional(),
+  name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  kind: z.enum(['income', 'expense', 'transfer', 'adjustment'], {
+    message: 'Tipo de categoría inválido',
+  }),
+})
+
+export const CreateCategoryResponseSchema = z.object({
+  id: z.number(),
+})
+
+export type Category = z.infer<typeof CategorySchema>
+export type CreateCategoryInput = z.infer<typeof CreateCategoryInputSchema>
+export type CreateCategoryResponse = z.infer<typeof CreateCategoryResponseSchema>
+
+export const categoriesApi = {
+  /**
+   * GET /api/categories?user_id=X
+   * Lista categorías globales + personales del usuario
+   */
+  async list(userId?: number): Promise<Category[]> {
+    const url = userId ? `/categories?user_id=${userId}` : '/categories'
+    const data = await apiFetch<Category[]>(url)
+    return z.array(CategorySchema).parse(data)
+  },
+
+  /**
+   * POST /api/categories
+   * Crea una categoría personal
+   */
+  async create(input: CreateCategoryInput): Promise<CreateCategoryResponse> {
+    const validated = CreateCategoryInputSchema.parse(input)
+    const data = await apiFetch<CreateCategoryResponse>('/categories', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return CreateCategoryResponseSchema.parse(data)
+  },
+}
+
+// ============================================================
+// PHASE 4: PAY PERIODS
+// ============================================================
+
+export const PayPeriodSchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  pay_date: z.string(), // YYYY-MM-DD
+  gross_income_cents: z.number().nullable(),
+  note: z.string().nullable(),
+  created_at: z.string().optional(),
+})
+
+export const UpsertPayPeriodInputSchema = z.object({
+  user_id: z.number(),
+  pay_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)'),
+  gross_income_cents: z.number().min(0, 'El ingreso debe ser positivo').optional().nullable(),
+  note: z.string().optional().nullable(),
+})
+
+export const UpsertPayPeriodResponseSchema = z.object({
+  id: z.number(),
+})
+
+export type PayPeriod = z.infer<typeof PayPeriodSchema>
+export type UpsertPayPeriodInput = z.infer<typeof UpsertPayPeriodInputSchema>
+export type UpsertPayPeriodResponse = z.infer<typeof UpsertPayPeriodResponseSchema>
+
+export const payPeriodsApi = {
+  /**
+   * GET /api/pay-periods/user/:userId
+   * Lista todas las quincenas de un usuario
+   */
+  async listByUser(userId: number): Promise<PayPeriod[]> {
+    const data = await apiFetch<PayPeriod[]>(`/pay-periods/user/${userId}`)
+    return z.array(PayPeriodSchema).parse(data)
+  },
+
+  /**
+   * POST /api/pay-periods (upsert)
+   * Crea o actualiza una quincena
+   */
+  async upsert(input: UpsertPayPeriodInput): Promise<UpsertPayPeriodResponse> {
+    const validated = UpsertPayPeriodInputSchema.parse(input)
+    const data = await apiFetch<UpsertPayPeriodResponse>('/pay-periods', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return UpsertPayPeriodResponseSchema.parse(data)
+  },
+}
+
+// ============================================================
+// PHASE 5: TRANSACTIONS
+// ============================================================
+
+export const TransactionSchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  pay_period_id: z.number().nullable(),
+  account_id: z.number(),
+  category_id: z.number().nullable(),
+  type: z.enum(['income', 'expense', 'transfer', 'adjustment']),
+  amount_cents: z.number(), // Con signo: income/adjustment >0, expense/transfer <0
+  description: z.string().nullable(),
+  txn_date: z.string(), // YYYY-MM-DD
+  planned_payment_id: z.number().nullable(),
+  counterparty_user_id: z.number().nullable(),
+  created_at: z.string().optional(),
+})
+
+export const CreateTransactionInputSchema = z.object({
+  user_id: z.number(),
+  pay_period_id: z.number().optional().nullable(),
+  account_id: z.number(),
+  category_id: z.number().optional().nullable(),
+  type: z.enum(['income', 'expense', 'transfer', 'adjustment'], {
+    message: 'Tipo de transacción inválido',
+  }),
+  amount_cents: z.number(),
+  description: z.string().optional().nullable(),
+  txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)'),
+  planned_payment_id: z.number().optional().nullable(),
+  counterparty_user_id: z.number().optional().nullable(),
+})
+
+export const CreateTransactionResponseSchema = z.object({
+  id: z.number(),
+})
+
+export type Transaction = z.infer<typeof TransactionSchema>
+export type CreateTransactionInput = z.infer<typeof CreateTransactionInputSchema>
+export type CreateTransactionResponse = z.infer<typeof CreateTransactionResponseSchema>
+
+export interface ListTransactionsParams {
+  userId: number
+  from?: string // YYYY-MM-DD
+  to?: string // YYYY-MM-DD
+  pay_period_id?: number
+  limit?: number
+  offset?: number
+}
+
+export const transactionsApi = {
+  /**
+   * GET /api/transactions/user/:userId con filtros opcionales
+   * Lista transacciones de un usuario
+   */
+  async list(params: ListTransactionsParams): Promise<Transaction[]> {
+    const { userId, from, to, pay_period_id, limit, offset } = params
+    const queryParams = new URLSearchParams()
+
+    if (from) queryParams.append('from', from)
+    if (to) queryParams.append('to', to)
+    if (pay_period_id) queryParams.append('pay_period_id', pay_period_id.toString())
+    if (limit) queryParams.append('limit', limit.toString())
+    if (offset) queryParams.append('offset', offset.toString())
+
+    const query = queryParams.toString()
+    const url = `/transactions/user/${userId}${query ? `?${query}` : ''}`
+
+    const data = await apiFetch<Transaction[]>(url)
+    return z.array(TransactionSchema).parse(data)
+  },
+
+  /**
+   * POST /api/transactions
+   * Crea una nueva transacción
+   */
+  async create(input: CreateTransactionInput): Promise<CreateTransactionResponse> {
+    const validated = CreateTransactionInputSchema.parse(input)
+    const data = await apiFetch<CreateTransactionResponse>('/transactions', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return CreateTransactionResponseSchema.parse(data)
+  },
+
+  /**
+   * DELETE /api/transactions/:id (opcional)
+   * Elimina una transacción
+   */
+  async delete(id: number): Promise<{ deleted: boolean }> {
+    const data = await apiFetch<{ deleted: boolean }>(`/transactions/${id}`, {
+      method: 'DELETE',
+    })
+    return data
+  },
+}
+
+// ============================================================
+// PHASE 7: SAVINGS (Entradas de ahorro)
+// ============================================================
+
+export const SavingEntrySchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  pay_period_id: z.number().nullable(),
+  account_id: z.number(),
+  amount_cents: z.number(), // >0 depósito, <0 retiro
+  entry_date: z.string(), // YYYY-MM-DD
+  note: z.string().nullable(),
+  created_at: z.string().optional(),
+})
+
+export const CreateSavingEntryInputSchema = z.object({
+  user_id: z.number(),
+  pay_period_id: z.number().optional().nullable(),
+  account_id: z.number(),
+  amount_cents: z.number(),
+  entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)'),
+  note: z.string().optional().nullable(),
+})
+
+export const CreateSavingEntryResponseSchema = z.object({
+  id: z.number(),
+})
+
+export type SavingEntry = z.infer<typeof SavingEntrySchema>
+export type CreateSavingEntryInput = z.infer<typeof CreateSavingEntryInputSchema>
+export type CreateSavingEntryResponse = z.infer<typeof CreateSavingEntryResponseSchema>
+
+export interface ListSavingEntriesParams {
+  userId: number
+  pay_period_id?: number
+  from?: string // YYYY-MM-DD
+  to?: string // YYYY-MM-DD
+}
+
+export const savingsApi = {
+  /**
+   * GET /api/savings/entries/user/:userId con filtros opcionales
+   * Lista entradas de ahorro de un usuario
+   */
+  async listEntries(params: ListSavingEntriesParams): Promise<SavingEntry[]> {
+    const { userId, pay_period_id, from, to } = params
+    const queryParams = new URLSearchParams()
+
+    if (pay_period_id) queryParams.append('pay_period_id', pay_period_id.toString())
+    if (from) queryParams.append('from', from)
+    if (to) queryParams.append('to', to)
+
+    const query = queryParams.toString()
+    const url = `/savings/entries/user/${userId}${query ? `?${query}` : ''}`
+
+    const data = await apiFetch<SavingEntry[]>(url)
+    return z.array(SavingEntrySchema).parse(data)
+  },
+
+  /**
+   * POST /api/savings/entries
+   * Crea una nueva entrada de ahorro
+   */
+  async createEntry(input: CreateSavingEntryInput): Promise<CreateSavingEntryResponse> {
+    const validated = CreateSavingEntryInputSchema.parse(input)
+    const data = await apiFetch<CreateSavingEntryResponse>('/savings/entries', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return CreateSavingEntryResponseSchema.parse(data)
+  },
+}
+
+// ============================================================
+// PHASE 8: SAVING GOALS (Metas de ahorro)
+// ============================================================
+
+export const SavingGoalSchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  name: z.string(),
+  target_amount_cents: z.number(),
+  target_date: z.string().nullable(), // YYYY-MM-DD
+  note: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  // Campos agregados (del JOIN):
+  saved_cents: z.number().optional(),
+  remaining_cents: z.number().optional(),
+  assigned_entry_ids: z.string().nullable().optional(), // "1,2,3" formato CSV
+})
+
+export const CreateSavingGoalInputSchema = z.object({
+  user_id: z.number(),
+  name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  target_amount_cents: z.number().min(1, 'El monto objetivo debe ser mayor a 0'),
+  target_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)').nullable().optional(),
+  note: z.string().nullable().optional(),
+})
+
+export const CreateSavingGoalResponseSchema = z.object({
+  id: z.number(),
+})
+
+export type SavingGoal = z.infer<typeof SavingGoalSchema>
+export type CreateSavingGoalInput = z.infer<typeof CreateSavingGoalInputSchema>
+export type CreateSavingGoalResponse = z.infer<typeof CreateSavingGoalResponseSchema>
+
+export const goalsApi = {
+  /**
+   * GET /api/savings/goals/user/:userId
+   * Lista metas con progreso agregado
+   */
+  async listByUser(userId: number): Promise<SavingGoal[]> {
+    const data = await apiFetch<SavingGoal[]>(`/savings/goals/user/${userId}`)
+    return z.array(SavingGoalSchema).parse(data)
+  },
+
+  /**
+   * POST /api/savings/goals
+   * Crea una nueva meta de ahorro
+   */
+  async create(input: CreateSavingGoalInput): Promise<CreateSavingGoalResponse> {
+    const validated = CreateSavingGoalInputSchema.parse(input)
+    const data = await apiFetch<CreateSavingGoalResponse>('/savings/goals', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return CreateSavingGoalResponseSchema.parse(data)
+  },
+
+  /**
+   * POST /api/savings/entries/:entryId/assign-goal/:goalId
+   * Asigna una entrada de ahorro a una meta
+   */
+  async assignEntryToGoal(entryId: number, goalId: number): Promise<{ linked: boolean }> {
+    const data = await apiFetch<{ linked: boolean }>(
+      `/savings/entries/${entryId}/assign-goal/${goalId}`,
+      {
+        method: 'POST',
+      }
+    )
+    return data
+  },
+
+  /**
+   * DELETE /api/savings/entries/:entryId/assign-goal/:goalId
+   * Desvincula una entrada de ahorro de una meta
+   */
+  async unassignEntryFromGoal(entryId: number, goalId: number): Promise<{ unlinked: boolean }> {
+    const data = await apiFetch<{ unlinked: boolean }>(
+      `/savings/entries/${entryId}/assign-goal/${goalId}`,
+      {
+        method: 'DELETE',
+      }
+    )
+    return data
+  },
+
+  /**
+   * DELETE /api/savings/goals/:id
+   * Elimina una meta (opcional)
+   */
+  async delete(id: number): Promise<{ deleted: boolean }> {
+    const data = await apiFetch<{ deleted: boolean }>(`/savings/goals/${id}`, {
+      method: 'DELETE',
+    })
+    return data
+  },
+}
+
+// ============================================================
+// PHASE 9: SUMMARY (Resumen por quincena)
+// ============================================================
+
+export const PayPeriodSummarySchema = z.object({
+  pay_period_id: z.number(),
+  pay_date: z.string(), // YYYY-MM-DD
+  income_in_cents: z.number(),
+  expenses_out_cents: z.number(),
+  reserved_planned_cents: z.number(),
+  savings_out_cents: z.number(),
+  leftover_cents: z.number(),
+})
+
+export type PayPeriodSummary = z.infer<typeof PayPeriodSummarySchema>
+
+export const summaryApi = {
+  /**
+   * GET /api/summary/pay-period/:id
+   * Obtiene el resumen de una quincena específica
+   */
+  async getPayPeriodSummary(payPeriodId: number): Promise<PayPeriodSummary> {
+    const data = await apiFetch<PayPeriodSummary>(`/summary/pay-period/${payPeriodId}`)
+    return PayPeriodSummarySchema.parse(data)
+  },
+}
+
+// ============================================================
 // EXPORT ALL
 // ============================================================
 
