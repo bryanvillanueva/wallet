@@ -5,18 +5,24 @@ import { CreateCategoryInputSchema, categoriesApi } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
+import {
+  BanknotesIcon,
+  ArrowDownCircleIcon,
+  ArrowPathIcon,
+  ScaleIcon
+} from '@heroicons/react/24/outline'
 
 const CATEGORY_KINDS: Array<{
   value: 'income' | 'expense' | 'transfer' | 'adjustment'
   label: string
-  icon: string
+  Icon: React.ElementType
   color: string
 }> = [
-  { value: 'income', label: 'Ingreso', icon: '💰', color: 'text-green-600 dark:text-green-400' },
-  { value: 'expense', label: 'Gasto', icon: '💸', color: 'text-red-600 dark:text-red-400' },
-  { value: 'transfer', label: 'Transferencia', icon: '🔄', color: 'text-blue-600 dark:text-blue-400' },
-  { value: 'adjustment', label: 'Ajuste', icon: '⚖️', color: 'text-yellow-600 dark:text-yellow-400' },
-]
+    { value: 'income', label: 'Ingreso', Icon: BanknotesIcon, color: 'text-green-600 dark:text-green-400' },
+    { value: 'expense', label: 'Gasto', Icon: ArrowDownCircleIcon, color: 'text-red-600 dark:text-red-400' },
+    { value: 'transfer', label: 'Transferencia', Icon: ArrowPathIcon, color: 'text-blue-600 dark:text-blue-400' },
+    { value: 'adjustment', label: 'Ajuste', Icon: ScaleIcon, color: 'text-yellow-600 dark:text-yellow-400' },
+  ]
 
 export function Categories() {
   const { activeUserId } = useAuthStore()
@@ -126,7 +132,9 @@ export function Categories() {
                     className="glass-card-light dark:glass-card-dark rounded-2xl p-4 flex items-center justify-between"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">{kindInfo.icon}</span>
+                      <div className="text-2xl">
+                        <kindInfo.Icon className={`w-6 h-6 ${kindInfo.color.split(' ')[0]}`} />
+                      </div>
                       <div>
                         <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
                           {category.name}
@@ -187,7 +195,9 @@ export function Categories() {
                     key={category.id}
                     className="glass-card-light dark:glass-card-dark rounded-2xl p-4 flex items-center gap-3"
                   >
-                    <span className="text-2xl">{kindInfo.icon}</span>
+                    <div className="text-2xl">
+                      <kindInfo.Icon className={`w-6 h-6 ${kindInfo.color.split(' ')[0]}`} />
+                    </div>
                     <div className="flex-1">
                       <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
                         {category.name}
@@ -241,7 +251,7 @@ export function Categories() {
                   >
                     {CATEGORY_KINDS.map((kind) => (
                       <option key={kind.value} value={kind.value}>
-                        {kind.icon} {kind.label}
+                        {kind.label}
                       </option>
                     ))}
                   </select>

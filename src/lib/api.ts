@@ -608,11 +608,12 @@ export const goalsApi = {
 export const PayPeriodSummarySchema = z.object({
   pay_period_id: z.number(),
   pay_date: z.string(), // YYYY-MM-DD
-  income_in_cents: z.number(),
-  expenses_out_cents: z.number(),
-  reserved_planned_cents: z.number(),
-  savings_out_cents: z.number(),
-  leftover_cents: z.number(),
+  gross_income_cents: z.number(),       // Sueldo de quincena
+  additional_income_cents: z.number(),  // Ingresos extra (otros negocios)
+  expenses_out_cents: z.number(),       // Gastos + transferencias
+  savings_out_cents: z.number(),        // Ahorros
+  reserved_planned_cents: z.number(),   // Pagos programados
+  leftover_cents: z.number(),           // Disponible
 })
 
 export type PayPeriodSummary = z.infer<typeof PayPeriodSummarySchema>

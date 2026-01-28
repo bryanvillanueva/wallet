@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { UpsertPayPeriodInputSchema, payPeriodsApi } from '../lib/api'
+import { UpsertPayPeriodInputSchema, payPeriodsApi, type PayPeriod } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
+import { PayPeriodDetail } from '../components/PayPeriodDetail'
 
 export function PayPeriods() {
   const { activeUserId } = useAuthStore()
@@ -12,6 +13,7 @@ export function PayPeriods() {
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriod | null>(null)
 
   type FormData = {
     user_id: number
@@ -108,6 +110,16 @@ export function PayPeriods() {
           <LoadingBar />
         </div>
       </div>
+    )
+  }
+
+  // Si hay una quincena seleccionada, mostrar el detalle
+  if (selectedPayPeriod) {
+    return (
+      <PayPeriodDetail
+        payPeriod={selectedPayPeriod}
+        onClose={() => setSelectedPayPeriod(null)}
+      />
     )
   }
 
@@ -255,7 +267,8 @@ export function PayPeriods() {
             {payPeriods.map((period) => (
               <div
                 key={period.id}
-                className="glass-card-light dark:glass-card-dark rounded-2xl p-5"
+                onClick={() => setSelectedPayPeriod(period)}
+                className="glass-card-light dark:glass-card-dark rounded-2xl p-5 cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">

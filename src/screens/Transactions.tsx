@@ -4,27 +4,46 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CreateTransactionInputSchema,
   transactionsApi,
+  categoriesApi,
+  accountsApi,
+  payPeriodsApi,
   type ListTransactionsParams,
 } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
 
+import {
+  BanknotesIcon,
+  ArrowPathIcon, // Transfer
+  ScaleIcon, // Adjustment
+  ArrowDownCircleIcon // Expense
+} from '@heroicons/react/24/outline'
+
 const TRANSACTION_TYPES: Array<{
   value: 'income' | 'expense' | 'transfer' | 'adjustment'
   label: string
-  icon: string
+  Icon: React.ElementType
   color: string
 }> = [
-  { value: 'income', label: 'Ingreso', icon: '💰', color: 'text-green-600 dark:text-green-400' },
-  { value: 'expense', label: 'Gasto', icon: '💸', color: 'text-red-600 dark:text-red-400' },
-  { value: 'transfer', label: 'Transferencia', icon: '🔄', color: 'text-blue-600 dark:text-blue-400' },
-  { value: 'adjustment', label: 'Ajuste', icon: '⚖️', color: 'text-yellow-600 dark:text-yellow-400' },
-]
+    { value: 'income', label: 'Ingreso', Icon: BanknotesIcon, color: 'text-green-600 dark:text-green-400' },
+    { value: 'expense', label: 'Gasto', Icon: ArrowDownCircleIcon, color: 'text-red-600 dark:text-red-400' },
+    { value: 'transfer', label: 'Transferencia', Icon: ArrowPathIcon, color: 'text-blue-600 dark:text-blue-400' },
+    { value: 'adjustment', label: 'Ajuste', Icon: ScaleIcon, color: 'text-yellow-600 dark:text-yellow-400' },
+  ]
 
 export function Transactions() {
   const { activeUserId } = useAuthStore()
-  const { transactions, setTransactions, accounts, categories, payPeriods } = useWalletStore()
+  const {
+    transactions,
+    setTransactions,
+    accounts,
+    setAccounts,
+    categories,
+    setCategories,
+    payPeriods,
+    setPayPeriods,
+  } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,11 +85,36 @@ export function Transactions() {
 
   const selectedType = watch('type')
 
+  // Cargar datos relacionados (categorías, cuentas, quincenas) cuando cambia el usuario
+  useEffect(() => {
+    if (activeUserId) {
+      loadRelatedData()
+    }
+  }, [activeUserId])
+
+  // Cargar transacciones cuando cambian los filtros
   useEffect(() => {
     if (activeUserId) {
       loadTransactions()
     }
   }, [activeUserId, filterPayPeriod, filterDateFrom, filterDateTo])
+
+  const loadRelatedData = async () => {
+    if (!activeUserId) return
+
+    try {
+      const [categoriesData, accountsData, payPeriodsData] = await Promise.all([
+        categoriesApi.list(activeUserId),
+        accountsApi.listByUser(activeUserId),
+        payPeriodsApi.listByUser(activeUserId),
+      ])
+      setCategories(categoriesData)
+      setAccounts(accountsData)
+      setPayPeriods(payPeriodsData)
+    } catch (err) {
+      console.error('Error loading related data:', err)
+    }
+  }
 
   const loadTransactions = async () => {
     if (!activeUserId) return
@@ -237,7 +281,7 @@ export function Transactions() {
                   >
                     {TRANSACTION_TYPES.map((type) => (
                       <option key={type.value} value={type.value}>
-                        {type.icon} {type.label}
+                        {type.label}
                       </option>
                     ))}
                   </select>
@@ -490,7 +534,9 @@ export function Transactions() {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
-                      <span className="text-2xl">{typeInfo.icon}</span>
+                      <div className="text-2xl">
+                        <typeInfo.Icon className={`w-6 h-6 ${typeInfo.color.split(' ')[0]}`} />
+                      </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
@@ -515,11 +561,10 @@ export function Transactions() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <p className={`text-[17px] font-bold ${
-                        isPositive
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}>
+                      <p className={`text-[17px] font-bold ${isPositive
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
+                        }`}>
                         {isPositive ? '+' : ''}{formatCurrency(txn.amount_cents)}
                       </p>
                       <button

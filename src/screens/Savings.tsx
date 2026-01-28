@@ -5,6 +5,14 @@ import { CreateSavingEntryInputSchema, savingsApi, payPeriodsApi } from '../lib/
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
+import {
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
+  DocumentTextIcon,
+  CreditCardIcon,
+  UserCircleIcon,
+  PlusIcon
+} from '@heroicons/react/24/outline'
 
 export function Savings() {
   const { activeUserId } = useAuthStore()
@@ -143,6 +151,8 @@ export function Savings() {
     return account ? account.name : `Cuenta #${accountId}`
   }
 
+
+
   // Calcular Total Saved (suma de todos los amount_cents)
   const totalSaved = savingEntries.reduce((sum, entry) => sum + entry.amount_cents, 0)
 
@@ -164,34 +174,38 @@ export function Savings() {
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-4xl mx-auto">
-        {/* Encabezado con Total Saved */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-[#1a1a1a] dark:text-white mb-6">Ahorros</h1>
-
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
-            <div className="text-center">
-              <p className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-2">
-                Total Ahorrado
-              </p>
-              <p className={`text-4xl font-bold ${
-                totalSaved >= 0
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}>
-                {formatCurrency(totalSaved)}
-              </p>
-            </div>
+        {/* Encabezado */}
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Hola de nuevo</p>
+            <h1 className="text-2xl font-bold text-[#1a1a1a] dark:text-white">Ahorros</h1>
           </div>
-
-          {!showCreateForm && (
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="w-full px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1"
-            >
-              + Nuevo Aporte/Retiro
-            </button>
-          )}
         </div>
+
+
+
+        <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
+          <div className="text-center">
+            <p className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-2">
+              Total Ahorrado
+            </p>
+            <p className={`text-4xl font-bold ${totalSaved >= 0
+              ? 'text-green-600 dark:text-green-400'
+              : 'text-red-600 dark:text-red-400'
+              }`}>
+              {formatCurrency(totalSaved)}
+            </p>
+          </div>
+        </div>
+
+        {!showCreateForm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1"
+          >
+            <PlusIcon className="w-5 h-5" /> Nuevo Aporte/Retiro
+          </button>
+        )}
 
         {/* Error global */}
         {error && (
@@ -438,7 +452,9 @@ export function Savings() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="text-2xl">{isDeposit ? '💰' : '💸'}</span>
+                        <span className="text-2xl">
+                          {isDeposit ? <ArrowUpTrayIcon className="w-6 h-6 text-green-500" /> : <ArrowDownTrayIcon className="w-6 h-6 text-red-500" />}
+                        </span>
                         <div>
                           <p className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white">
                             {isDeposit ? 'Depósito' : 'Retiro'}
@@ -457,11 +473,10 @@ export function Savings() {
                     </div>
 
                     <div className="text-right">
-                      <p className={`text-[19px] font-bold ${
-                        isDeposit
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}>
+                      <p className={`text-[19px] font-bold ${isDeposit
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
+                        }`}>
                         {isDeposit ? '+' : ''}{formatCurrency(entry.amount_cents)}
                       </p>
                     </div>
@@ -472,6 +487,17 @@ export function Savings() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function QuickAction({ icon, label, color, onClick }: { icon: React.ReactNode, label: string, color: string, onClick: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button onClick={onClick} className={`${color} w-16 h-16 rounded-[1.2rem] flex items-center justify-center text-[#4211d1] shadow-sm hover:translate-y-[-2px] transition-transform cursor-pointer`}>
+        {icon}
+      </button>
+      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
     </div>
   )
 }

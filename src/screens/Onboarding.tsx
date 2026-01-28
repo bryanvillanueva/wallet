@@ -10,7 +10,7 @@ export function Onboarding() {
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { setActiveUserId } = useAuthStore()
+  const { setActiveUser } = useAuthStore()
 
   const {
     register,
@@ -43,17 +43,17 @@ export function Onboarding() {
     try {
       setError(null)
       const response = await usersApi.create(data)
-      setActiveUserId(response.id)
+      setActiveUser(response.id, data.name)
       reset()
       setShowCreateForm(false)
-      await loadUsers() // Recargar lista
+      await loadUsers()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear usuario')
     }
   }
 
-  const onSelectUser = (userId: number) => {
-    setActiveUserId(userId)
+  const onSelectUser = (user: User) => {
+    setActiveUser(user.id, user.name)
   }
 
   if (isLoading) {

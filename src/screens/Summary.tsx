@@ -5,7 +5,16 @@ import { summaryApi, savingsApi, CreateSavingEntryInputSchema } from '../lib/api
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
-import type { PayPeriodSummary } from '../lib/api'
+import { PayPeriodDetail } from '../components/PayPeriodDetail'
+import type { PayPeriodSummary, PayPeriod } from '../lib/api'
+import {
+  BanknotesIcon,
+  CurrencyDollarIcon,
+  BuildingLibraryIcon,
+  ClipboardDocumentCheckIcon,
+  SparklesIcon,
+  ArchiveBoxIcon
+} from '@heroicons/react/24/outline'
 
 export function Summary() {
   const { activeUserId } = useAuthStore()
@@ -17,6 +26,9 @@ export function Summary() {
   // Modal "Guardar en Savings"
   const [showSavingsModal, setShowSavingsModal] = useState(false)
   const [selectedLeftover, setSelectedLeftover] = useState<number>(0)
+
+  // Modal detalle de quincena
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriod | null>(null)
 
   const {
     register,
@@ -145,6 +157,16 @@ export function Summary() {
     )
   }
 
+  // Si hay una quincena seleccionada, mostrar el detalle
+  if (selectedPayPeriod) {
+    return (
+      <PayPeriodDetail
+        payPeriod={selectedPayPeriod}
+        onClose={() => setSelectedPayPeriod(null)}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-6xl mx-auto">
@@ -176,8 +198,11 @@ export function Summary() {
                   key={payPeriod.id}
                   className="glass-card-light dark:glass-card-dark rounded-2xl p-6"
                 >
-                  {/* Encabezado */}
-                  <div className="flex items-center justify-between mb-6">
+                  {/* Encabezado - clickeable para ver detalle */}
+                  <div
+                    onClick={() => setSelectedPayPeriod(payPeriod)}
+                    className="flex items-center justify-between mb-6 cursor-pointer hover:opacity-80 transition-opacity"
+                  >
                     <div>
                       <h2 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white">
                         Quincena {formatDate(payPeriod.pay_date)}
@@ -187,6 +212,9 @@ export function Summary() {
                           {payPeriod.note}
                         </p>
                       )}
+                      <p className="text-[11px] text-[#22d3ee] dark:text-[#4da3ff] mt-1 font-medium">
+                        Click para ver detalle completo
+                      </p>
                     </div>
                     {payPeriod.gross_income_cents !== null && (
                       <div className="text-right">
@@ -203,24 +231,43 @@ export function Summary() {
                   {summary ? (
                     <>
                       {/* Métricas principales */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                        {/* Ingresos */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                        {/* Ingreso Bruto (Sueldo) */}
                         <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">💰</span>
+                            <BanknotesIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
                             <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                              Ingresos
+                              Ingreso Bruto
                             </p>
                           </div>
                           <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
-                            {formatCurrency(summary.income_in_cents)}
+                            {formatCurrency(summary.gross_income_cents)}
+                          </p>
+                          <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
+                            Sueldo de quincena
+                          </p>
+                        </div>
+
+                        {/* Ingresos Adicionales */}
+                        <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CurrencyDollarIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                            <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
+                              Ing. Adicionales
+                            </p>
+                          </div>
+                          <p className="text-[17px] font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(summary.additional_income_cents)}
+                          </p>
+                          <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
+                            Otros negocios
                           </p>
                         </div>
 
                         {/* Gastos */}
                         <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">💸</span>
+                            <ArchiveBoxIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
                             <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
                               Gastos
                             </p>
@@ -228,25 +275,15 @@ export function Summary() {
                           <p className="text-[17px] font-bold text-red-600 dark:text-red-400">
                             {formatCurrency(Math.abs(summary.expenses_out_cents))}
                           </p>
-                        </div>
-
-                        {/* Reservas */}
-                        <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">📋</span>
-                            <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                              Reservas
-                            </p>
-                          </div>
-                          <p className="text-[17px] font-bold text-orange-600 dark:text-orange-400">
-                            {formatCurrency(summary.reserved_planned_cents)}
+                          <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
+                            Gastos + transferencias
                           </p>
                         </div>
 
                         {/* Ahorros */}
                         <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">🏦</span>
+                            <BuildingLibraryIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                             <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
                               Ahorros
                             </p>
@@ -256,19 +293,34 @@ export function Summary() {
                           </p>
                         </div>
 
+                        {/* Reservas */}
+                        <div className="glass-card-light dark:glass-card-dark rounded-xl p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <ClipboardDocumentCheckIcon className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                            <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
+                              Reservas
+                            </p>
+                          </div>
+                          <p className="text-[17px] font-bold text-orange-600 dark:text-orange-400">
+                            {formatCurrency(summary.reserved_planned_cents)}
+                          </p>
+                          <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
+                            Pagos programados
+                          </p>
+                        </div>
+
                         {/* Disponible */}
                         <div className="glass-card-light dark:glass-card-dark rounded-xl p-4 bg-gradient-to-br from-[#22d3ee]/10 to-[#06b6d4]/10 dark:from-[#4da3ff]/10 dark:to-[#3b82f6]/10 border-2 border-[#22d3ee]/30 dark:border-[#4da3ff]/30">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl">✨</span>
+                            <SparklesIcon className="w-5 h-5 text-[#22d3ee] dark:text-[#4da3ff]" />
                             <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
                               Disponible
                             </p>
                           </div>
-                          <p className={`text-[19px] font-bold ${
-                            summary.leftover_cents >= 0
-                              ? 'text-[#22d3ee] dark:text-[#4da3ff]'
-                              : 'text-red-600 dark:text-red-400'
-                          }`}>
+                          <p className={`text-[19px] font-bold ${summary.leftover_cents >= 0
+                            ? 'text-[#22d3ee] dark:text-[#4da3ff]'
+                            : 'text-red-600 dark:text-red-400'
+                            }`}>
                             {formatCurrency(summary.leftover_cents)}
                           </p>
                         </div>
@@ -280,7 +332,7 @@ export function Summary() {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white mb-1">
-                                💡 Tienes {formatCurrency(summary.leftover_cents)} disponible
+                                Tienes ${formatCurrency(summary.leftover_cents)} disponible
                               </p>
                               <p className="text-[13px] text-[#666] dark:text-neutral-400">
                                 ¿Quieres guardar parte en ahorros?

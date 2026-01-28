@@ -9,17 +9,23 @@ import {
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
+import {
+  BanknotesIcon,
+  BuildingLibraryIcon,
+  CreditCardIcon,
+  BuildingStorefrontIcon
+} from '@heroicons/react/24/outline'
 
 const ACCOUNT_TYPES: Array<{
   value: 'cash' | 'bank' | 'credit' | 'savings'
   label: string
-  icon: string
+  Icon: React.ElementType
 }> = [
-  { value: 'cash', label: 'Efectivo', icon: '💵' },
-  { value: 'bank', label: 'Banco', icon: '🏦' },
-  { value: 'credit', label: 'Crédito', icon: '💳' },
-  { value: 'savings', label: 'Ahorros', icon: '🐷' },
-]
+    { value: 'cash', label: 'Efectivo', Icon: BanknotesIcon },
+    { value: 'bank', label: 'Banco', Icon: BuildingLibraryIcon },
+    { value: 'credit', label: 'Crédito', Icon: CreditCardIcon },
+    { value: 'savings', label: 'Ahorros', Icon: BuildingStorefrontIcon },
+  ]
 
 export function Accounts() {
   const { activeUserId } = useAuthStore()
@@ -104,6 +110,10 @@ export function Accounts() {
     }
   }
 
+  const getAccountTypeInfo = (type: string) => {
+    return ACCOUNT_TYPES.find((t) => t.value === type) || ACCOUNT_TYPES[0]
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen p-6">
@@ -137,71 +147,66 @@ export function Accounts() {
         {/* Lista de cuentas */}
         {accounts.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {accounts.map((account) => (
-              <div
-                key={account.id}
-                className="glass-card-light dark:glass-card-dark rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl">
-                      {
-                        ACCOUNT_TYPES.find((t) => t.value === account.type)
-                          ?.icon
-                      }
+            {accounts.map((account) => {
+              const typeInfo = getAccountTypeInfo(account.type)
+              return (
+                <div
+                  key={account.id}
+                  className="glass-card-light dark:glass-card-dark rounded-3xl p-6 transition-all duration-300 hover:-translate-y-1"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-3xl text-[#4211d1] dark:text-[#a074fc]">
+                        <typeInfo.Icon className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h3 className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white">
+                          {account.name}
+                        </h3>
+                        <p className="text-[13px] text-[#666] dark:text-neutral-400 mt-1">
+                          {typeInfo.label} · {account.currency}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white">
-                        {account.name}
-                      </h3>
-                      <p className="text-[13px] text-[#666] dark:text-neutral-400 mt-1">
-                        {
-                          ACCOUNT_TYPES.find((t) => t.value === account.type)
-                            ?.label
-                        }{' '}
-                        · {account.currency}
-                      </p>
-                    </div>
+
+                    {/* Toggle activo/inactivo */}
+                    <button
+                      onClick={() => toggleAccountStatus(account)}
+                      className={`relative w-12 h-6 rounded-full transition-all duration-300 ${account.is_active
+                          ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6]'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                    >
+                      <div
+                        className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${account.is_active ? 'left-7' : 'left-1'
+                          }`}
+                      />
+                    </button>
                   </div>
 
-                  {/* Toggle activo/inactivo */}
-                  <button
-                    onClick={() => toggleAccountStatus(account)}
-                    className={`relative w-12 h-6 rounded-full transition-all duration-300 ${
-                      account.is_active
-                        ? 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6]'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    }`}
-                  >
+                  <div className="flex items-center gap-2">
                     <div
-                      className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${
-                        account.is_active ? 'left-7' : 'left-1'
-                      }`}
+                      className={`w-2 h-2 rounded-full ${account.is_active
+                          ? 'bg-green-500'
+                          : 'bg-gray-400 dark:bg-gray-600'
+                        }`}
                     />
-                  </button>
+                    <span className="text-[13px] text-[#666] dark:text-neutral-400">
+                      {account.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2 h-2 rounded-full ${
-                      account.is_active
-                        ? 'bg-green-500'
-                        : 'bg-gray-400 dark:bg-gray-600'
-                    }`}
-                  />
-                  <span className="text-[13px] text-[#666] dark:text-neutral-400">
-                    {account.is_active ? 'Activa' : 'Inactiva'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
         {/* Empty state */}
         {accounts.length === 0 && !showCreateForm && (
           <div className="glass-card-light dark:glass-card-dark rounded-3xl p-12 text-center mb-6">
-            <div className="text-6xl mb-4">🏦</div>
+            <div className="text-6xl mb-4 text-gray-300 dark:text-gray-600">
+              <BuildingLibraryIcon className="w-20 h-20 mx-auto" />
+            </div>
             <h3 className="text-xl font-semibold text-[#1a1a1a] dark:text-white mb-2">
               No tienes cuentas
             </h3>
@@ -258,7 +263,9 @@ export function Accounts() {
                         {...register('type')}
                         className="sr-only"
                       />
-                      <span className="text-2xl">{type.icon}</span>
+                      <span className="text-2xl text-[#4211d1] dark:text-[#a074fc]">
+                        <type.Icon className="w-6 h-6" />
+                      </span>
                       <span className="text-[15px] font-medium text-[#1a1a1a] dark:text-white">
                         {type.label}
                       </span>
