@@ -8,9 +8,6 @@ import { LoadingBar } from '../components/LoadingBar'
 import {
   ArrowUpTrayIcon,
   ArrowDownTrayIcon,
-  DocumentTextIcon,
-  CreditCardIcon,
-  UserCircleIcon,
   PlusIcon
 } from '@heroicons/react/24/outline'
 
@@ -487,17 +484,6 @@ export function Savings() {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function QuickAction({ icon, label, color, onClick }: { icon: React.ReactNode, label: string, color: string, onClick: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <button onClick={onClick} className={`${color} w-16 h-16 rounded-[1.2rem] flex items-center justify-center text-[#4211d1] shadow-sm hover:translate-y-[-2px] transition-transform cursor-pointer`}>
-        {icon}
-      </button>
-      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
     </div>
   )
 }

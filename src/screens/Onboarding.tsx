@@ -95,7 +95,7 @@ export function Onboarding() {
             {users.map((user) => (
               <button
                 key={user.id}
-                onClick={() => onSelectUser(user.id)}
+                onClick={() => onSelectUser(user)}
                 className="w-full p-4 glass-button rounded-2xl text-left transition-all duration-300 ease-out hover:-translate-y-1"
               >
                 <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">{user.name}</p>
