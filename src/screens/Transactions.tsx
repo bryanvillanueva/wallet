@@ -12,25 +12,31 @@ import {
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
-
+import { Icons } from '../components/Icons'
 import {
+  PlusIcon,
+  XMarkIcon,
+  FunnelIcon,
+  ChevronDownIcon,
+  TrashIcon,
   BanknotesIcon,
-  ArrowPathIcon, // Transfer
-  ScaleIcon, // Adjustment
-  ArrowDownCircleIcon // Expense
+  ArrowPathIcon,
+  ScaleIcon,
+  ArrowDownCircleIcon,
 } from '@heroicons/react/24/outline'
 
 const TRANSACTION_TYPES: Array<{
   value: 'income' | 'expense' | 'transfer' | 'adjustment'
   label: string
   Icon: React.ElementType
+  bg: string
   color: string
 }> = [
-    { value: 'income', label: 'Ingreso', Icon: BanknotesIcon, color: 'text-green-600 dark:text-green-400' },
-    { value: 'expense', label: 'Gasto', Icon: ArrowDownCircleIcon, color: 'text-red-600 dark:text-red-400' },
-    { value: 'transfer', label: 'Transferencia', Icon: ArrowPathIcon, color: 'text-blue-600 dark:text-blue-400' },
-    { value: 'adjustment', label: 'Ajuste', Icon: ScaleIcon, color: 'text-yellow-600 dark:text-yellow-400' },
-  ]
+  { value: 'income', label: 'Ingreso', Icon: BanknotesIcon, bg: 'bg-green-50', color: 'text-green-500' },
+  { value: 'expense', label: 'Gasto', Icon: ArrowDownCircleIcon, bg: 'bg-red-50', color: 'text-red-500' },
+  { value: 'transfer', label: 'Transferencia', Icon: ArrowPathIcon, bg: 'bg-blue-50', color: 'text-blue-500' },
+  { value: 'adjustment', label: 'Ajuste', Icon: ScaleIcon, bg: 'bg-amber-50', color: 'text-amber-500' },
+]
 
 export function Transactions() {
   const { activeUserId } = useAuthStore()
@@ -46,6 +52,7 @@ export function Transactions() {
   } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Filtros
@@ -85,14 +92,12 @@ export function Transactions() {
 
   const selectedType = watch('type')
 
-  // Cargar datos relacionados (categorías, cuentas, quincenas) cuando cambia el usuario
   useEffect(() => {
     if (activeUserId) {
       loadRelatedData()
     }
   }, [activeUserId])
 
-  // Cargar transacciones cuando cambian los filtros
   useEffect(() => {
     if (activeUserId) {
       loadTransactions()
@@ -143,12 +148,11 @@ export function Transactions() {
     try {
       setError(null)
 
-      // Validar signo según tipo
       let amountCents = data.amount_cents
       if (data.type === 'expense' || data.type === 'transfer') {
-        amountCents = Math.abs(amountCents) * -1 // Asegurar negativo
+        amountCents = Math.abs(amountCents) * -1
       } else {
-        amountCents = Math.abs(amountCents) // Asegurar positivo
+        amountCents = Math.abs(amountCents)
       }
 
       await transactionsApi.create({
@@ -174,18 +178,18 @@ export function Transactions() {
       })
       setShowCreateForm(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear transacción')
+      setError(err instanceof Error ? err.message : 'Error al crear transaccion')
     }
   }
 
   const handleDeleteTransaction = async (id: number) => {
-    if (!confirm('¿Estás seguro de eliminar esta transacción?')) return
+    if (!confirm('Estas seguro de eliminar esta transaccion?')) return
 
     try {
       await transactionsApi.delete(id)
       await loadTransactions()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al eliminar transacción')
+      setError(err instanceof Error ? err.message : 'Error al eliminar transaccion')
     }
   }
 
@@ -199,11 +203,10 @@ export function Transactions() {
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no disponible'
 
-    // Si la fecha ya incluye la hora, usarla directamente; si no, agregar T00:00:00
     const dateToFormat = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`
     const date = new Date(dateToFormat)
 
-    if (isNaN(date.getTime())) return 'Fecha inválida'
+    if (isNaN(date.getTime())) return 'Fecha invalida'
 
     return new Intl.DateTimeFormat('es', {
       day: '2-digit',
@@ -221,17 +224,47 @@ export function Transactions() {
   }
 
   const getCategoryName = (categoryId: number | null) => {
-    if (!categoryId) return 'Sin categoría'
-    return categories.find((c) => c.id === categoryId)?.name || `Categoría #${categoryId}`
+    if (!categoryId) return 'Sin categoria'
+    return categories.find((c) => c.id === categoryId)?.name || `Categoria #${categoryId}`
   }
 
-  // Filtrar categorías según el tipo de transacción seleccionado
   const filteredCategories = categories.filter((c) => c.kind === selectedType)
+
+  // === YTD ===
+  // Ingresos netos = quincenas + ingresos adicionales (transacciones tipo income)
+  const ytdPayPeriodIncome = payPeriods.reduce((sum, pp) => sum + (pp.gross_income_cents || 0), 0)
+  const ytdAdditionalIncome = transactions
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + Math.abs(t.amount_cents), 0)
+  const ytdTotalIncome = ytdPayPeriodIncome + ytdAdditionalIncome
+
+  // Gastos totales = gastos + transferencias
+  const ytdTotalExpenses = transactions
+    .filter((t) => t.type === 'expense' || t.type === 'transfer')
+    .reduce((sum, t) => sum + Math.abs(t.amount_cents), 0)
+
+  // === Ultima quincena ===
+  const sortedPayPeriods = [...payPeriods].sort((a, b) => b.pay_date.localeCompare(a.pay_date))
+  const lastPayPeriod = sortedPayPeriods[0] || null
+
+  const lastPPTransactions = lastPayPeriod
+    ? transactions.filter((t) => t.pay_period_id === lastPayPeriod.id)
+    : []
+  const lastPPIncome = (lastPayPeriod?.gross_income_cents || 0) +
+    lastPPTransactions
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + Math.abs(t.amount_cents), 0)
+  const lastPPExpenses = lastPPTransactions
+    .filter((t) => t.type === 'expense' || t.type === 'transfer')
+    .reduce((sum, t) => sum + Math.abs(t.amount_cents), 0)
+
+  const hasActiveFilters = !!(filterPayPeriod || filterDateFrom || filterDateTo)
 
   if (isLoading) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="max-w-6xl mx-auto">
+      <div className="min-h-screen bg-[#f5f5f7]">
+        <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-12 pb-24 rounded-b-[32px]" />
+        <div className="px-5 -mt-16">
           <LoadingBar />
         </div>
       </div>
@@ -239,168 +272,234 @@ export function Transactions() {
   }
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-semibold text-[#1a1a1a] dark:text-white">Transacciones</h1>
-          {!showCreateForm && (
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="px-4 py-2 glass-button rounded-2xl text-[13px] font-semibold text-[#22d3ee] dark:text-[#4da3ff]"
-            >
-              + Nueva Transacción
-            </button>
-          )}
-        </div>
+    <div className="min-h-screen bg-[#f5f5f7]">
+      {/* ============ HEADER PURPLE ============ */}
+      <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-8 pb-28 rounded-b-[32px]">
+        <div className="max-w-lg mx-auto">
+          <p className="text-white/70 text-sm font-semibold mb-1">Control de gastos</p>
+          <h1 className="text-white text-2xl font-extrabold mb-6">Movimientos</h1>
 
-        {/* Error global */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/20 backdrop-filter backdrop-blur-xl border border-red-400/50 rounded-2xl">
-            <p className="text-[13px] text-red-700 dark:text-red-300 font-medium">{error}</p>
+          {/* Resumen YTD en header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">
+                Ingresos YTD
+              </p>
+              <p className="text-white text-2xl font-black">
+                {formatCurrency(ytdTotalIncome)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">
+                Gastos YTD
+              </p>
+              <p className="text-white text-2xl font-black">
+                {formatCurrency(ytdTotalExpenses)}
+              </p>
+            </div>
+          </div>
+          <p className="text-white/30 text-[11px] font-semibold mt-2 text-center">
+            {payPeriods.length} quincena{payPeriods.length !== 1 ? 's' : ''} registrada{payPeriods.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </div>
+
+      {/* ============ CONTENT ============ */}
+      <div className="max-w-lg mx-auto px-5 -mt-16 pb-8">
+        {/* Card ultima quincena */}
+        {lastPayPeriod && (
+          <div className="fintech-card p-4 mb-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-purple-50 flex items-center justify-center">
+                <Icons.Calendar className="w-4.5 h-4.5 text-[#d821f9]" />
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 font-bold uppercase">Ultima Quincena</p>
+                <p className="text-xs text-gray-400 font-semibold">{formatDate(lastPayPeriod.pay_date)}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-green-50/60 rounded-xl p-3">
+                <p className="text-[10px] text-green-600/60 font-bold uppercase mb-0.5">Ingresos</p>
+                <p className="text-[15px] font-extrabold text-green-600">{formatCurrency(lastPPIncome)}</p>
+              </div>
+              <div className="bg-red-50/60 rounded-xl p-3">
+                <p className="text-[10px] text-red-500/60 font-bold uppercase mb-0.5">Gastos</p>
+                <p className="text-[15px] font-extrabold text-red-500">{formatCurrency(lastPPExpenses)}</p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Formulario de creación */}
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+            <XMarkIcon
+              className="w-5 h-5 text-red-400 cursor-pointer shrink-0 mt-0.5"
+              onClick={() => setError(null)}
+            />
+            <p className="text-sm text-red-600 font-semibold">{error}</p>
+          </div>
+        )}
+
+        {/* Boton nueva transaccion */}
+        {!showCreateForm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Nueva Transaccion
+          </button>
+        )}
+
+        {/* ============ FORMULARIO ============ */}
         {showCreateForm && (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
-            <h3 className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white mb-4">
-              Nueva Transacción
-            </h3>
+          <div className="fintech-card p-5 mb-5">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-extrabold text-gray-800">Nueva Transaccion</h3>
+              <button
+                onClick={() => {
+                  setShowCreateForm(false)
+                  reset()
+                }}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              >
+                <XMarkIcon className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit(onCreateTransaction)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Tipo */}
-                <div>
-                  <label htmlFor="type" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Tipo
-                  </label>
-                  <select
-                    id="type"
-                    {...register('type')}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
-                  >
-                    {TRANSACTION_TYPES.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.type && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {errors.type.message}
-                    </p>
-                  )}
+              {/* Tipo - chips */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Tipo
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {TRANSACTION_TYPES.map((type) => {
+                    const isSelected = selectedType === type.value
+                    return (
+                      <label
+                        key={type.value}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-[#d821f9] bg-purple-50'
+                            : 'border-gray-100 bg-white hover:border-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          value={type.value}
+                          {...register('type')}
+                          className="hidden"
+                        />
+                        <div className={`w-7 h-7 rounded-full ${type.bg} flex items-center justify-center`}>
+                          <type.Icon className={`w-3.5 h-3.5 ${type.color}`} />
+                        </div>
+                        <span className={`text-xs font-bold ${isSelected ? 'text-[#d821f9]' : 'text-gray-600'}`}>
+                          {type.label}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
+                {errors.type && (
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.type.message}</p>
+                )}
+              </div>
 
-                {/* Fecha */}
-                <div>
-                  <label htmlFor="txn_date" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Fecha
-                  </label>
+              {/* Monto */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Monto
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
                   <input
-                    id="txn_date"
-                    type="date"
-                    {...register('txn_date')}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                    type="number"
+                    step="0.01"
+                    {...register('amount_cents', {
+                      setValueAs: (v) => Math.round(parseFloat(v) * 100),
+                    })}
+                    className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="0.00"
                   />
-                  {errors.txn_date && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {errors.txn_date.message}
-                    </p>
-                  )}
                 </div>
+                {errors.amount_cents && (
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.amount_cents.message}</p>
+                )}
+                <p className="mt-1 text-[11px] text-gray-400 font-medium">
+                  Ingresa el monto en dolares (ej: 25.50)
+                </p>
+              </div>
 
-                {/* Cuenta */}
+              {/* Cuenta y Fecha en grid */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="account_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                     Cuenta
                   </label>
                   <select
-                    id="account_id"
                     {...register('account_id', { valueAsNumber: true })}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                   >
-                    <option value="">Selecciona una cuenta</option>
+                    <option value="">Selecciona</option>
                     {accounts.filter((a) => a.is_active).map((account) => (
                       <option key={account.id} value={account.id}>
-                        {account.name} ({account.type})
+                        {account.name}
                       </option>
                     ))}
                   </select>
                   {errors.account_id && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {errors.account_id.message}
-                    </p>
+                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.account_id.message}</p>
                   )}
                 </div>
 
-                {/* Categoría */}
                 <div>
-                  <label htmlFor="category_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Categoría (opcional)
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    {...register('txn_date')}
+                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
+                  />
+                  {errors.txn_date && (
+                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.txn_date.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Categoria y Quincena en grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Categoria <span className="text-gray-300 normal-case">(opc.)</span>
                   </label>
                   <select
-                    id="category_id"
                     {...register('category_id', {
                       setValueAs: (v) => (v === '' ? null : Number(v)),
                     })}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                   >
-                    <option value="">Sin categoría</option>
+                    <option value="">Sin categoria</option>
                     {filteredCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
                     ))}
                   </select>
-                  {errors.category_id && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {errors.category_id.message}
-                    </p>
-                  )}
                 </div>
 
-                {/* Monto */}
                 <div>
-                  <label htmlFor="amount_cents" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Monto
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[15px]">
-                      $
-                    </span>
-                    <input
-                      id="amount_cents"
-                      type="number"
-                      step="0.01"
-                      {...register('amount_cents', {
-                        setValueAs: (v) => Math.round(parseFloat(v) * 100),
-                      })}
-                      className="glass-input w-full pl-8 pr-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  {errors.amount_cents && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {errors.amount_cents.message}
-                    </p>
-                  )}
-                  <p className="mt-1 text-[11px] text-[#666] dark:text-neutral-500">
-                    Ingresa el monto en dólares (ej: 25.50)
-                  </p>
-                </div>
-
-                {/* Quincena (opcional) */}
-                <div>
-                  <label htmlFor="pay_period_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Quincena (opcional)
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Quincena <span className="text-gray-300 normal-case">(opc.)</span>
                   </label>
                   <select
-                    id="pay_period_id"
                     {...register('pay_period_id', {
                       setValueAs: (v) => (v === '' ? null : Number(v)),
                     })}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                   >
                     <option value="">Sin quincena</option>
                     {payPeriods.map((pp) => (
@@ -412,181 +511,175 @@ export function Transactions() {
                 </div>
               </div>
 
-              {/* Descripción */}
+              {/* Descripcion */}
               <div>
-                <label htmlFor="description" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                  Descripción (opcional)
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Descripcion <span className="text-gray-300 normal-case">(opcional)</span>
                 </label>
                 <textarea
-                  id="description"
                   {...register('description')}
                   rows={2}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300 resize-none"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold resize-none"
                   placeholder="Ej: Compra en supermercado"
                 />
               </div>
 
               {/* Botones */}
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreateForm(false)
                     reset()
                   }}
-                  className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
+                  className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
                 >
-                  {isSubmitting ? 'Creando...' : 'Crear'}
+                  {isSubmitting ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* Filtros */}
-        {!showCreateForm && (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4 mb-6">
-            <p className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-3">
-              Filtros
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label htmlFor="filter_pay_period" className="block text-[11px] text-[#666] dark:text-neutral-400 mb-1">
-                  Quincena
-                </label>
+        {/* ============ FILTROS ============ */}
+        <div className="mb-4">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-[#d821f9] transition-colors"
+          >
+            <FunnelIcon className="w-4 h-4" />
+            Filtros
+            {hasActiveFilters && (
+              <span className="w-2 h-2 rounded-full bg-[#d821f9]" />
+            )}
+            <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showFilters && (
+            <div className="fintech-card p-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <select
-                  id="filter_pay_period"
                   value={filterPayPeriod || ''}
                   onChange={(e) => setFilterPayPeriod(e.target.value ? Number(e.target.value) : undefined)}
-                  className="glass-input w-full px-3 py-2 rounded-xl text-[#1a1a1a] dark:text-white text-[13px] focus:outline-none"
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
                 >
-                  <option value="">Todas</option>
+                  <option value="">Todas las quincenas</option>
                   {payPeriods.map((pp) => (
-                    <option key={pp.id} value={pp.id}>
-                      {formatDate(pp.pay_date)}
-                    </option>
+                    <option key={pp.id} value={pp.id}>{formatDate(pp.pay_date)}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label htmlFor="filter_from" className="block text-[11px] text-[#666] dark:text-neutral-400 mb-1">
-                  Desde
-                </label>
+
                 <input
-                  id="filter_from"
                   type="date"
                   value={filterDateFrom}
                   onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="glass-input w-full px-3 py-2 rounded-xl text-[#1a1a1a] dark:text-white text-[13px] focus:outline-none"
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                  placeholder="Desde"
                 />
-              </div>
-              <div>
-                <label htmlFor="filter_to" className="block text-[11px] text-[#666] dark:text-neutral-400 mb-1">
-                  Hasta
-                </label>
+
                 <input
-                  id="filter_to"
                   type="date"
                   value={filterDateTo}
                   onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="glass-input w-full px-3 py-2 rounded-xl text-[#1a1a1a] dark:text-white text-[13px] focus:outline-none"
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                  placeholder="Hasta"
                 />
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Lista de transacciones */}
+              {hasActiveFilters && (
+                <button
+                  onClick={() => {
+                    setFilterPayPeriod(undefined)
+                    setFilterDateFrom('')
+                    setFilterDateTo('')
+                  }}
+                  className="mt-3 w-full py-2 text-xs font-bold text-[#d821f9] hover:bg-[#d821f9]/5 rounded-lg transition-colors"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ============ LISTA DE TRANSACCIONES ============ */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-extrabold text-gray-800">Transacciones</h2>
+          <span className="text-xs font-bold text-gray-400">{transactions.length} registros</span>
+        </div>
+
         {transactions.length === 0 ? (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-8 text-center">
-            <p className="text-[17px] font-medium text-[#1a1a1a] dark:text-white mb-2">
-              No hay transacciones
-            </p>
-            <p className="text-[15px] text-[#666] dark:text-neutral-400 mb-4">
-              Registra tu primera transacción para comenzar
+          <div className="fintech-card p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
+              <Icons.CreditCard className="w-8 h-8 text-[#d821f9]" />
+            </div>
+            <p className="text-base font-bold text-gray-800 mb-1">Sin transacciones</p>
+            <p className="text-sm text-gray-400 mb-5">
+              Registra tu primera transaccion para comenzar
             </p>
             {!showCreateForm && (
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="px-4 py-2 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)]"
+                className="px-6 py-3 fintech-btn-primary text-sm"
               >
-                Registrar Primera Transacción
+                Registrar Primera Transaccion
               </button>
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            {transactions.map((txn) => {
+          <div className="fintech-card overflow-hidden">
+            {transactions.map((txn, index) => {
               const typeInfo = getTransactionTypeInfo(txn.type)
               const isPositive = txn.amount_cents >= 0
 
               return (
                 <div
                   key={txn.id}
-                  className="glass-card-light dark:glass-card-dark rounded-2xl p-4 hover:shadow-lg transition-all duration-300"
+                  className={`flex items-center gap-4 px-5 py-4 ${
+                    index !== transactions.length - 1 ? 'border-b border-gray-100' : ''
+                  }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="text-2xl">
-                        <typeInfo.Icon className={`w-6 h-6 ${typeInfo.color.split(' ')[0]}`} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
-                            {txn.description || getCategoryName(txn.category_id)}
-                          </p>
-                          <span className={`text-[11px] font-medium ${typeInfo.color}`}>
-                            {typeInfo.label}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-[13px] text-[#666] dark:text-neutral-400">
-                          <span>{formatDate(txn.txn_date)}</span>
-                          <span>•</span>
-                          <span>{getAccountName(txn.account_id)}</span>
-                          {txn.category_id && (
-                            <>
-                              <span>•</span>
-                              <span>{getCategoryName(txn.category_id)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                  {/* Icono */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${typeInfo.bg}`}>
+                    <typeInfo.Icon className={`w-5 h-5 ${typeInfo.color}`} />
+                  </div>
 
-                    <div className="flex items-center gap-3">
-                      <p className={`text-[17px] font-bold ${isPositive
-                        ? 'text-green-600 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400'
-                        }`}>
-                        {isPositive ? '+' : ''}{formatCurrency(txn.amount_cents)}
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-gray-800 truncate">
+                        {txn.description || getCategoryName(txn.category_id)}
                       </p>
-                      <button
-                        onClick={() => handleDeleteTransaction(txn.id)}
-                        className="p-2 hover:bg-red-500/20 rounded-xl transition-all duration-200"
-                        title="Eliminar"
-                      >
-                        <svg
-                          className="w-4 h-4 text-red-600 dark:text-red-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${typeInfo.bg} ${typeInfo.color}`}>
+                        {typeInfo.label}
+                      </span>
                     </div>
+                    <p className="text-xs text-gray-400 font-semibold truncate">
+                      {formatDate(txn.txn_date)} · {getAccountName(txn.account_id)}
+                      {txn.category_id ? ` · ${getCategoryName(txn.category_id)}` : ''}
+                    </p>
+                  </div>
+
+                  {/* Monto y delete */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className={`text-base font-extrabold ${
+                      isPositive ? 'text-green-500' : 'text-red-500'
+                    }`}>
+                      {isPositive ? '+' : ''}{formatCurrency(txn.amount_cents)}
+                    </p>
+                    <button
+                      onClick={() => handleDeleteTransaction(txn.id)}
+                      className="w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors"
+                    >
+                      <TrashIcon className="w-3.5 h-3.5 text-gray-300 hover:text-red-400" />
+                    </button>
                   </div>
                 </div>
               )
