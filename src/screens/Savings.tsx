@@ -1,21 +1,24 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreateSavingEntryInputSchema, savingsApi, payPeriodsApi } from '../lib/api'
+import { CreateSavingEntryInputSchema, savingsApi, payPeriodsApi, goalsApi } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
 import {
-  ArrowUpTrayIcon,
-  ArrowDownTrayIcon,
-  PlusIcon
+  PlusIcon,
+  FunnelIcon,
+  XMarkIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline'
+import { Icons } from '../components/Icons'
 
 export function Savings() {
   const { activeUserId } = useAuthStore()
-  const { savingEntries, setSavingEntries, accounts, setAccounts, payPeriods, setPayPeriods } = useWalletStore()
+  const { savingEntries, setSavingEntries, accounts, setAccounts, payPeriods, setPayPeriods, savingGoals, setSavingGoals } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Filtros
@@ -24,6 +27,9 @@ export function Savings() {
   const [filterTo, setFilterTo] = useState<string>('')
   const [filterAccount, setFilterAccount] = useState<number | null>(null)
 
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
+  const [goalAmountInput, setGoalAmountInput] = useState<string>('')
+
   type FormData = {
     user_id: number
     account_id: number
@@ -31,6 +37,8 @@ export function Savings() {
     entry_date: string
     pay_period_id?: number | null
     note?: string | null
+    goal_id?: number | null
+    goal_amount_cents?: number | null
   }
 
   const {
@@ -64,14 +72,16 @@ export function Savings() {
 
     try {
       setIsLoading(true)
-      const [entriesData, accountsData, payPeriodsData] = await Promise.all([
+      const [entriesData, accountsData, payPeriodsData, goalsData] = await Promise.all([
         savingsApi.listEntries({ userId: activeUserId }),
         fetch(`https://wallet-api-production-2e8a.up.railway.app/api/accounts/user/${activeUserId}`).then(r => r.json()),
         payPeriodsApi.listByUser(activeUserId),
+        goalsApi.listByUser(activeUserId),
       ])
       setSavingEntries(entriesData)
       setAccounts(accountsData)
       setPayPeriods(payPeriodsData)
+      setSavingGoals(goalsData)
     } catch (err) {
       console.error('Error loading data:', err)
       setError(err instanceof Error ? err.message : 'Error al cargar datos')
@@ -100,6 +110,10 @@ export function Savings() {
   const onCreateEntry = async (data: FormData) => {
     try {
       setError(null)
+      const goalAmountCents = goalAmountInput
+        ? Math.round(parseFloat(goalAmountInput) * 100)
+        : undefined
+
       await savingsApi.createEntry({
         user_id: activeUserId!,
         account_id: data.account_id,
@@ -107,14 +121,18 @@ export function Savings() {
         entry_date: data.entry_date,
         pay_period_id: data.pay_period_id,
         note: data.note,
+        goal_id: selectedGoalId || undefined,
+        goal_amount_cents: selectedGoalId ? (goalAmountCents || undefined) : undefined,
       })
 
-      await loadSavingEntries()
+      await loadAllData()
       reset({
         user_id: activeUserId || 0,
         pay_period_id: null,
         note: '',
       })
+      setSelectedGoalId(null)
+      setGoalAmountInput('')
       setShowCreateForm(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear aporte')
@@ -134,7 +152,7 @@ export function Savings() {
     const dateToFormat = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`
     const date = new Date(dateToFormat)
 
-    if (isNaN(date.getTime())) return 'Fecha inválida'
+    if (isNaN(date.getTime())) return 'Fecha invalida'
 
     return new Intl.DateTimeFormat('es', {
       day: '2-digit',
@@ -148,20 +166,22 @@ export function Savings() {
     return account ? account.name : `Cuenta #${accountId}`
   }
 
-
-
-  // Calcular Total Saved (suma de todos los amount_cents)
+  // Totales
   const totalSaved = savingEntries.reduce((sum, entry) => sum + entry.amount_cents, 0)
+  const totalDeposits = savingEntries.filter(e => e.amount_cents > 0).reduce((sum, e) => sum + e.amount_cents, 0)
+  const totalWithdrawals = savingEntries.filter(e => e.amount_cents < 0).reduce((sum, e) => sum + Math.abs(e.amount_cents), 0)
 
-  // Filtrar entradas por cuenta si se seleccionó un filtro
   const filteredEntries = filterAccount
     ? savingEntries.filter((e) => e.account_id === filterAccount)
     : savingEntries
 
+  const hasActiveFilters = !!(filterPayPeriod || filterFrom || filterTo || filterAccount)
+
   if (isLoading) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-[#f5f5f7]">
+        <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-12 pb-24 rounded-b-[32px]" />
+        <div className="px-5 -mt-16">
           <LoadingBar />
         </div>
       </div>
@@ -169,65 +189,99 @@ export function Savings() {
   }
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Encabezado */}
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Hola de nuevo</p>
-            <h1 className="text-2xl font-bold text-[#1a1a1a] dark:text-white">Ahorros</h1>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#f5f5f7]">
+      {/* ============ HEADER PURPLE ============ */}
+      <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-8 pb-28 rounded-b-[32px]">
+        <div className="max-w-lg mx-auto">
+          {/* Greeting */}
+          <p className="text-white/70 text-sm font-semibold mb-1">Hola de nuevo</p>
+          <h1 className="text-white text-2xl font-extrabold mb-6">Mis Ahorros</h1>
 
-
-
-        <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
+          {/* Balance principal */}
           <div className="text-center">
-            <p className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-2">
-              Total Ahorrado
+            <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">
+              Balance Total
             </p>
-            <p className={`text-4xl font-bold ${totalSaved >= 0
-              ? 'text-green-600 dark:text-green-400'
-              : 'text-red-600 dark:text-red-400'
-              }`}>
+            <p className="text-white text-5xl font-black tracking-tight">
               {formatCurrency(totalSaved)}
             </p>
           </div>
         </div>
+      </div>
 
-        {!showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1"
-          >
-            <PlusIcon className="w-5 h-5" /> Nuevo Aporte/Retiro
-          </button>
-        )}
+      {/* ============ CONTENT ============ */}
+      <div className="max-w-lg mx-auto px-5 -mt-16 pb-8">
+        {/* Mini cards: Ingresos / Egresos */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="fintech-card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+              <Icons.TrendingUp className="w-5 h-5 text-green-500" />
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400 font-bold uppercase">Depositos</p>
+              <p className="text-[16px] font-extrabold text-gray-800">{formatCurrency(totalDeposits)}</p>
+            </div>
+          </div>
+          <div className="fintech-card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+              <Icons.TrendingDown className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-400 font-bold uppercase">Retiros</p>
+              <p className="text-[16px] font-extrabold text-gray-800">{formatCurrency(totalWithdrawals)}</p>
+            </div>
+          </div>
+        </div>
 
-        {/* Error global */}
+        {/* Error */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/20 backdrop-filter backdrop-blur-xl border border-red-400/50 rounded-2xl">
-            <p className="text-[13px] text-red-700 dark:text-red-300 font-medium">{error}</p>
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+            <XMarkIcon
+              className="w-5 h-5 text-red-400 cursor-pointer shrink-0 mt-0.5"
+              onClick={() => setError(null)}
+            />
+            <p className="text-sm text-red-600 font-semibold">{error}</p>
           </div>
         )}
 
-        {/* Formulario de creación */}
+        {/* Boton nuevo aporte */}
+        {!showCreateForm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Nuevo Aporte / Retiro
+          </button>
+        )}
+
+        {/* ============ FORMULARIO ============ */}
         {showCreateForm && (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
-            <h3 className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white mb-4">
-              Nuevo Aporte/Retiro
-            </h3>
+          <div className="fintech-card p-5 mb-5">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-extrabold text-gray-800">Nuevo Movimiento</h3>
+              <button
+                onClick={() => {
+                  setShowCreateForm(false)
+                  reset()
+                  setSelectedGoalId(null)
+                  setGoalAmountInput('')
+                }}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              >
+                <XMarkIcon className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit(onCreateEntry)} className="space-y-4">
               {/* Cuenta */}
               <div>
-                <label htmlFor="account_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                   Cuenta
                 </label>
                 <select
-                  id="account_id"
                   {...register('account_id', { valueAsNumber: true })}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                 >
                   <option value="">Selecciona una cuenta</option>
                   {accounts.map((account) => (
@@ -237,71 +291,60 @@ export function Savings() {
                   ))}
                 </select>
                 {errors.account_id && (
-                  <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                    {errors.account_id.message}
-                  </p>
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.account_id.message}</p>
                 )}
               </div>
 
               {/* Monto */}
               <div>
-                <label htmlFor="amount_cents" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                   Monto
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[15px]">
-                    $
-                  </span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
                   <input
-                    id="amount_cents"
                     type="number"
                     step="0.01"
                     {...register('amount_cents', {
                       setValueAs: (v) => (v === '' || v === null ? 0 : Math.round(parseFloat(v) * 100)),
                     })}
-                    className="glass-input w-full pl-8 pr-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
                     placeholder="0.00"
                   />
                 </div>
                 {errors.amount_cents && (
-                  <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                    {errors.amount_cents.message}
-                  </p>
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.amount_cents.message}</p>
                 )}
-                <p className="mt-1 text-[11px] text-[#666] dark:text-neutral-500">
-                  Positivo para depósito, negativo para retiro (ej: 500.00 o -200.00)
+                <p className="mt-1 text-[11px] text-gray-400 font-medium">
+                  Positivo = deposito, negativo = retiro
                 </p>
               </div>
 
               {/* Fecha */}
               <div>
-                <label htmlFor="entry_date" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                   Fecha
                 </label>
                 <input
-                  id="entry_date"
                   type="date"
                   {...register('entry_date')}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                 />
                 {errors.entry_date && (
-                  <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                    {errors.entry_date.message}
-                  </p>
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.entry_date.message}</p>
                 )}
               </div>
 
-              {/* Quincena (opcional) */}
+              {/* Quincena */}
               <div>
-                <label htmlFor="pay_period_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                  Quincena (opcional)
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Quincena <span className="text-gray-300 normal-case">(opcional)</span>
                 </label>
                 <select
-                  id="pay_period_id"
                   {...register('pay_period_id', {
                     setValueAs: (v) => (v === '' || v === null ? null : parseInt(v)),
                   })}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                 >
                   <option value="">Sin quincena</option>
                   {payPeriods.map((pp) => (
@@ -312,36 +355,80 @@ export function Savings() {
                 </select>
               </div>
 
-              {/* Nota (opcional) */}
+              {/* Nota */}
               <div>
-                <label htmlFor="note" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                  Nota (opcional)
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Nota <span className="text-gray-300 normal-case">(opcional)</span>
                 </label>
                 <textarea
-                  id="note"
                   {...register('note')}
                   rows={2}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300 resize-none"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold resize-none"
                   placeholder="Ej: Ahorro para vacaciones"
                 />
               </div>
 
+              {/* Meta */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Asignar a una meta <span className="text-gray-300 normal-case">(opcional)</span>
+                </label>
+                <select
+                  value={selectedGoalId || ''}
+                  onChange={(e) => {
+                    const val = e.target.value ? parseInt(e.target.value) : null
+                    setSelectedGoalId(val)
+                    if (!val) setGoalAmountInput('')
+                  }}
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
+                >
+                  <option value="">Sin meta</option>
+                  {savingGoals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Monto parcial para meta */}
+              {selectedGoalId && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Monto para la meta <span className="text-gray-300 normal-case">(opcional)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={goalAmountInput}
+                      onChange={(e) => setGoalAmountInput(e.target.value)}
+                      className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
+                      placeholder="Vacio = monto completo"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Botones */}
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreateForm(false)
                     reset()
+                    setSelectedGoalId(null)
+                    setGoalAmountInput('')
                   }}
-                  className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
+                  className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
                 >
                   {isSubmitting ? 'Guardando...' : 'Guardar'}
                 </button>
@@ -350,134 +437,141 @@ export function Savings() {
           </div>
         )}
 
-        {/* Filtros */}
-        <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4 mb-6">
-          <p className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-3">
+        {/* ============ FILTROS ============ */}
+        <div className="mb-4">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-[#d821f9] transition-colors"
+          >
+            <FunnelIcon className="w-4 h-4" />
             Filtros
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            {/* Quincena */}
-            <select
-              value={filterPayPeriod || ''}
-              onChange={(e) => setFilterPayPeriod(e.target.value ? parseInt(e.target.value) : null)}
-              className="glass-input px-4 py-2 rounded-2xl text-[#1a1a1a] dark:text-white text-[13px] focus:outline-none"
-            >
-              <option value="">Todas las quincenas</option>
-              {payPeriods.map((pp) => (
-                <option key={pp.id} value={pp.id}>
-                  {formatDate(pp.pay_date)}
-                </option>
-              ))}
-            </select>
+            {hasActiveFilters && (
+              <span className="w-2 h-2 rounded-full bg-[#d821f9]" />
+            )}
+            <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
 
-            {/* Desde */}
-            <input
-              type="date"
-              value={filterFrom}
-              onChange={(e) => setFilterFrom(e.target.value)}
-              placeholder="Desde"
-              className="glass-input px-4 py-2 rounded-2xl text-[#1a1a1a] dark:text-white text-[13px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none"
-            />
+          {showFilters && (
+            <div className="fintech-card p-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <select
+                  value={filterPayPeriod || ''}
+                  onChange={(e) => setFilterPayPeriod(e.target.value ? parseInt(e.target.value) : null)}
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                >
+                  <option value="">Todas las quincenas</option>
+                  {payPeriods.map((pp) => (
+                    <option key={pp.id} value={pp.id}>{formatDate(pp.pay_date)}</option>
+                  ))}
+                </select>
 
-            {/* Hasta */}
-            <input
-              type="date"
-              value={filterTo}
-              onChange={(e) => setFilterTo(e.target.value)}
-              placeholder="Hasta"
-              className="glass-input px-4 py-2 rounded-2xl text-[#1a1a1a] dark:text-white text-[13px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none"
-            />
+                <select
+                  value={filterAccount || ''}
+                  onChange={(e) => setFilterAccount(e.target.value ? parseInt(e.target.value) : null)}
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                >
+                  <option value="">Todas las cuentas</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </select>
 
-            {/* Cuenta */}
-            <select
-              value={filterAccount || ''}
-              onChange={(e) => setFilterAccount(e.target.value ? parseInt(e.target.value) : null)}
-              className="glass-input px-4 py-2 rounded-2xl text-[#1a1a1a] dark:text-white text-[13px] focus:outline-none"
-            >
-              <option value="">Todas las cuentas</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                <input
+                  type="date"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                  placeholder="Desde"
+                />
 
-          {/* Limpiar filtros */}
-          {(filterPayPeriod || filterFrom || filterTo || filterAccount) && (
-            <button
-              onClick={() => {
-                setFilterPayPeriod(null)
-                setFilterFrom('')
-                setFilterTo('')
-                setFilterAccount(null)
-              }}
-              className="mt-3 w-full px-3 py-2 glass-button rounded-2xl text-[13px] font-semibold text-[#666] dark:text-neutral-300"
-            >
-              Limpiar filtros
-            </button>
+                <input
+                  type="date"
+                  value={filterTo}
+                  onChange={(e) => setFilterTo(e.target.value)}
+                  className="fintech-input px-3 py-2.5 text-xs text-gray-700 font-semibold"
+                  placeholder="Hasta"
+                />
+              </div>
+
+              {hasActiveFilters && (
+                <button
+                  onClick={() => {
+                    setFilterPayPeriod(null)
+                    setFilterFrom('')
+                    setFilterTo('')
+                    setFilterAccount(null)
+                  }}
+                  className="mt-3 w-full py-2 text-xs font-bold text-[#d821f9] hover:bg-[#d821f9]/5 rounded-lg transition-colors"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Lista de entradas */}
+        {/* ============ LISTA DE MOVIMIENTOS ============ */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-extrabold text-gray-800">Movimientos</h2>
+          <span className="text-xs font-bold text-gray-400">{filteredEntries.length} registros</span>
+        </div>
+
         {filteredEntries.length === 0 ? (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-8 text-center">
-            <p className="text-[17px] font-medium text-[#1a1a1a] dark:text-white mb-2">
-              No hay movimientos de ahorro
-            </p>
-            <p className="text-[15px] text-[#666] dark:text-neutral-400 mb-4">
-              Registra tu primer aporte para comenzar a ahorrar
+          <div className="fintech-card p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-[#d821f9]/10 flex items-center justify-center mx-auto mb-4">
+              <Icons.PiggyBank className="w-8 h-8 text-[#d821f9]" />
+            </div>
+            <p className="text-base font-bold text-gray-800 mb-1">Sin movimientos</p>
+            <p className="text-sm text-gray-400 mb-5">
+              Registra tu primer aporte para comenzar
             </p>
             {!showCreateForm && (
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="px-4 py-2 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)]"
+                className="px-6 py-3 fintech-btn-primary text-sm"
               >
                 Registrar Primer Aporte
               </button>
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredEntries.map((entry) => {
+          <div className="fintech-card overflow-hidden">
+            {filteredEntries.map((entry, index) => {
               const isDeposit = entry.amount_cents > 0
               return (
                 <div
                   key={entry.id}
-                  className="glass-card-light dark:glass-card-dark rounded-2xl p-5"
+                  className={`flex items-center gap-4 px-5 py-4 ${
+                    index !== filteredEntries.length - 1 ? 'border-b border-gray-100' : ''
+                  }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-2xl">
-                          {isDeposit ? <ArrowUpTrayIcon className="w-6 h-6 text-green-500" /> : <ArrowDownTrayIcon className="w-6 h-6 text-red-500" />}
-                        </span>
-                        <div>
-                          <p className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white">
-                            {isDeposit ? 'Depósito' : 'Retiro'}
-                          </p>
-                          <p className="text-[13px] text-[#666] dark:text-neutral-400">
-                            {formatDate(entry.entry_date)} · {getAccountName(entry.account_id)}
-                          </p>
-                        </div>
-                      </div>
-
-                      {entry.note && (
-                        <p className="text-[15px] text-[#666] dark:text-neutral-300 mt-2 ml-11">
-                          {entry.note}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="text-right">
-                      <p className={`text-[19px] font-bold ${isDeposit
-                        ? 'text-green-600 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400'
-                        }`}>
-                        {isDeposit ? '+' : ''}{formatCurrency(entry.amount_cents)}
-                      </p>
-                    </div>
+                  {/* Icono */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                    isDeposit ? 'bg-green-50' : 'bg-red-50'
+                  }`}>
+                    {isDeposit
+                      ? <Icons.TrendingUp className="w-5 h-5 text-green-500" />
+                      : <Icons.TrendingDown className="w-5 h-5 text-red-500" />
+                    }
                   </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">
+                      {isDeposit ? 'Deposito' : 'Retiro'}
+                      {entry.note && <span className="font-semibold text-gray-400"> · {entry.note}</span>}
+                    </p>
+                    <p className="text-xs text-gray-400 font-semibold">
+                      {formatDate(entry.entry_date)} · {getAccountName(entry.account_id)}
+                    </p>
+                  </div>
+
+                  {/* Monto */}
+                  <p className={`text-base font-extrabold shrink-0 ${
+                    isDeposit ? 'text-green-500' : 'text-red-500'
+                  }`}>
+                    {isDeposit ? '+' : ''}{formatCurrency(entry.amount_cents)}
+                  </p>
                 </div>
               )
             })}

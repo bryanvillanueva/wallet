@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { CreateSavingGoalInputSchema, goalsApi, savingsApi } from '../lib/api'
+import type { EntryAllocations } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
@@ -16,7 +17,9 @@ export function SavingGoals() {
 
   // Modal para asignar entradas
   const [assignModalGoal, setAssignModalGoal] = useState<SavingGoal | null>(null)
-  const [selectedEntries, setSelectedEntries] = useState<Set<number>>(new Set())
+  const [entryAllocations, setEntryAllocations] = useState<Map<number, EntryAllocations>>(new Map())
+  const [assignAmounts, setAssignAmounts] = useState<Map<number, string>>(new Map())
+  const [loadingAllocations, setLoadingAllocations] = useState(false)
 
   const {
     register,
@@ -96,49 +99,79 @@ export function SavingGoals() {
     }
   }
 
-  const openAssignModal = (goal: SavingGoal) => {
+  // Filtrar solo entradas de depósito (amount_cents > 0) para asignar
+  const depositEntries = savingEntries.filter(e => e.amount_cents > 0)
+
+  const openAssignModal = async (goal: SavingGoal) => {
     setAssignModalGoal(goal)
-    // Pre-seleccionar entradas ya asignadas
-    const assignedIds = goal.assigned_entry_ids ? goal.assigned_entry_ids.split(',').map(Number) : []
-    setSelectedEntries(new Set(assignedIds))
-  }
+    setAssignAmounts(new Map())
+    setLoadingAllocations(true)
 
-  const handleToggleEntry = (entryId: number) => {
-    const newSet = new Set(selectedEntries)
-    if (newSet.has(entryId)) {
-      newSet.delete(entryId)
-    } else {
-      newSet.add(entryId)
+    try {
+      // Cargar allocations de cada entry de depósito
+      const allocationsMap = new Map<number, EntryAllocations>()
+      const results = await Promise.all(
+        depositEntries.map((entry) => goalsApi.getEntryAllocations(entry.id))
+      )
+      results.forEach((alloc) => {
+        allocationsMap.set(alloc.entry_id, alloc)
+      })
+      setEntryAllocations(allocationsMap)
+    } catch (err) {
+      console.error('Error loading allocations:', err)
+    } finally {
+      setLoadingAllocations(false)
     }
-    setSelectedEntries(newSet)
   }
 
-  const handleSaveAssignments = async () => {
+  const isEntryAssignedToGoal = (entryId: number, goalId: number) => {
+    const alloc = entryAllocations.get(entryId)
+    if (!alloc) return false
+    return alloc.allocations.some((a) => a.goal_id === goalId)
+  }
+
+  const getEntryAllocationForGoal = (entryId: number, goalId: number) => {
+    const alloc = entryAllocations.get(entryId)
+    if (!alloc) return null
+    return alloc.allocations.find((a) => a.goal_id === goalId) || null
+  }
+
+  const handleAssignEntry = async (entryId: number) => {
     if (!assignModalGoal) return
 
     try {
       setError(null)
+      const amountStr = assignAmounts.get(entryId)
+      const amountCents = amountStr ? Math.round(parseFloat(amountStr) * 100) : undefined
+      await goalsApi.assignEntryToGoal(entryId, assignModalGoal.id, amountCents)
 
-      // Obtener IDs actualmente asignados
-      const currentIds = assignModalGoal.assigned_entry_ids
-        ? assignModalGoal.assigned_entry_ids.split(',').map(Number)
-        : []
-
-      // Determinar qué entradas asignar y desasignar
-      const toAssign = Array.from(selectedEntries).filter((id: number) => !currentIds.includes(id))
-      const toUnassign = currentIds.filter((id: number) => !selectedEntries.has(id))
-
-      // Ejecutar asignaciones y desasignaciones
-      await Promise.all([
-        ...toAssign.map((entryId: number) => goalsApi.assignEntryToGoal(entryId, assignModalGoal.id)),
-        ...toUnassign.map((entryId: number) => goalsApi.unassignEntryFromGoal(entryId, assignModalGoal.id)),
-      ])
-
+      // Recargar allocations de este entry
+      const updated = await goalsApi.getEntryAllocations(entryId)
+      setEntryAllocations((prev) => new Map(prev).set(entryId, updated))
+      setAssignAmounts((prev) => {
+        const next = new Map(prev)
+        next.delete(entryId)
+        return next
+      })
       await loadAllData()
-      setAssignModalGoal(null)
-      setSelectedEntries(new Set())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al asignar entradas')
+      setError(err instanceof Error ? err.message : 'Error al asignar entrada')
+    }
+  }
+
+  const handleUnassignEntry = async (entryId: number) => {
+    if (!assignModalGoal) return
+
+    try {
+      setError(null)
+      await goalsApi.unassignEntryFromGoal(entryId, assignModalGoal.id)
+
+      // Recargar allocations de este entry
+      const updated = await goalsApi.getEntryAllocations(entryId)
+      setEntryAllocations((prev) => new Map(prev).set(entryId, updated))
+      await loadAllData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al desasignar entrada')
     }
   }
 
@@ -188,9 +221,6 @@ export function SavingGoals() {
 
     return remaining / payPeriodsRemaining
   }
-
-  // Filtrar solo entradas de depósito (amount_cents > 0) para asignar
-  const depositEntries = savingEntries.filter(e => e.amount_cents > 0)
 
   if (isLoading) {
     return (
@@ -472,62 +502,125 @@ export function SavingGoals() {
         {assignModalGoal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-              <h3 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white mb-4">
+              <h3 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white mb-2">
                 Asignar Aportes a: {assignModalGoal.name}
               </h3>
+              <p className="text-[13px] text-[#666] dark:text-neutral-400 mb-4">
+                Puedes asignar montos parciales de cada aporte a esta meta
+              </p>
 
-              {depositEntries.length === 0 ? (
+              {loadingAllocations ? (
+                <LoadingBar />
+              ) : depositEntries.length === 0 ? (
                 <p className="text-[15px] text-[#666] dark:text-neutral-400 mb-4">
                   No hay aportes disponibles para asignar
                 </p>
               ) : (
-                <div className="space-y-2 mb-6">
-                  {depositEntries.map((entry) => (
-                    <label
-                      key={entry.id}
-                      className="flex items-center gap-3 p-3 glass-card-light dark:glass-card-dark rounded-xl cursor-pointer hover:bg-white/30 dark:hover:bg-white/10 transition-all"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedEntries.has(entry.id)}
-                        onChange={() => handleToggleEntry(entry.id)}
-                        className="w-5 h-5 rounded accent-[#22d3ee]"
-                      />
-                      <div className="flex-1">
-                        <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
-                          {formatDate(entry.entry_date)}
-                        </p>
-                        {entry.note && (
-                          <p className="text-[13px] text-[#666] dark:text-neutral-400">
-                            {entry.note}
+                <div className="space-y-3 mb-6">
+                  {depositEntries.map((entry) => {
+                    const alloc = entryAllocations.get(entry.id)
+                    const unassigned = alloc ? alloc.unassigned_cents : entry.amount_cents
+                    const assignedToThis = getEntryAllocationForGoal(entry.id, assignModalGoal.id)
+                    const isAssigned = !!assignedToThis
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="p-4 glass-card-light dark:glass-card-dark rounded-xl"
+                      >
+                        {/* Info del entry */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
+                              {formatDate(entry.entry_date)}
+                            </p>
+                            {entry.note && (
+                              <p className="text-[13px] text-[#666] dark:text-neutral-400">
+                                {entry.note}
+                              </p>
+                            )}
+                          </div>
+                          <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
+                            {formatCurrency(entry.amount_cents)}
+                          </p>
+                        </div>
+
+                        {/* Detalle de allocations */}
+                        {alloc && alloc.allocations.length > 0 && (
+                          <div className="mb-2 pl-2 border-l-2 border-[#22d3ee]/30 dark:border-[#4da3ff]/30">
+                            {alloc.allocations.map((a) => (
+                              <p key={a.goal_id} className={`text-[11px] ${
+                                a.goal_id === assignModalGoal.id
+                                  ? 'text-[#22d3ee] dark:text-[#4da3ff] font-semibold'
+                                  : 'text-[#666] dark:text-neutral-400'
+                              }`}>
+                                {a.goal_name}: {formatCurrency(a.amount_cents)}
+                              </p>
+                            ))}
+                            <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
+                              Disponible: {formatCurrency(unassigned)}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Acciones */}
+                        {isAssigned ? (
+                          <div className="flex items-center justify-between">
+                            <p className="text-[13px] font-medium text-[#22d3ee] dark:text-[#4da3ff]">
+                              Asignado: {formatCurrency(assignedToThis.amount_cents)}
+                            </p>
+                            <button
+                              onClick={() => handleUnassignEntry(entry.id)}
+                              className="px-3 py-1 glass-button rounded-full text-[11px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all"
+                            >
+                              Desasignar
+                            </button>
+                          </div>
+                        ) : unassigned > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[13px]">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={assignAmounts.get(entry.id) || ''}
+                                onChange={(e) => {
+                                  setAssignAmounts((prev) => new Map(prev).set(entry.id, e.target.value))
+                                }}
+                                placeholder={`Max ${(unassigned / 100).toFixed(2)}`}
+                                className="glass-input w-full pl-7 pr-3 py-2 rounded-xl text-[#1a1a1a] dark:text-white text-[13px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleAssignEntry(entry.id)}
+                              className="px-3 py-2 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-xl text-[13px] font-semibold text-white transition-all hover:-translate-y-0.5"
+                            >
+                              Asignar
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-[#999] dark:text-neutral-500 italic">
+                            Sin monto disponible
                           </p>
                         )}
                       </div>
-                      <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
-                        {formatCurrency(entry.amount_cents)}
-                      </p>
-                    </label>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setAssignModalGoal(null)
-                    setSelectedEntries(new Set())
-                  }}
-                  className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveAssignments}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1"
-                >
-                  Guardar
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setAssignModalGoal(null)
+                  setEntryAllocations(new Map())
+                  setAssignAmounts(new Map())
+                }}
+                className="w-full px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         )}

@@ -453,10 +453,14 @@ export const CreateSavingEntryInputSchema = z.object({
   amount_cents: z.number(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)'),
   note: z.string().optional().nullable(),
+  goal_id: z.number().optional().nullable(),
+  goal_amount_cents: z.number().optional().nullable(),
 })
 
 export const CreateSavingEntryResponseSchema = z.object({
   id: z.number(),
+  goal_linked: z.boolean().optional(),
+  goal_amount_cents: z.number().optional(),
 })
 
 export type SavingEntry = z.infer<typeof SavingEntrySchema>
@@ -517,8 +521,8 @@ export const SavingGoalSchema = z.object({
   note: z.string().nullable().optional(),
   created_at: z.string().optional(),
   // Campos agregados (del JOIN):
-  saved_cents: z.number().optional(),
-  remaining_cents: z.number().optional(),
+  saved_cents: z.coerce.number().optional(),
+  remaining_cents: z.coerce.number().optional(),
   assigned_entry_ids: z.string().nullable().optional(), // "1,2,3" formato CSV
 })
 
@@ -533,6 +537,24 @@ export const CreateSavingGoalInputSchema = z.object({
 export const CreateSavingGoalResponseSchema = z.object({
   id: z.number(),
 })
+
+// Allocations (asignaciones parciales de entries a goals)
+export const AllocationSchema = z.object({
+  goal_id: z.number(),
+  goal_name: z.string(),
+  amount_cents: z.coerce.number(),
+})
+
+export const EntryAllocationsSchema = z.object({
+  entry_id: z.number(),
+  entry_amount_cents: z.coerce.number(),
+  total_allocated_cents: z.coerce.number(),
+  unassigned_cents: z.coerce.number(),
+  allocations: z.array(AllocationSchema),
+})
+
+export type Allocation = z.infer<typeof AllocationSchema>
+export type EntryAllocations = z.infer<typeof EntryAllocationsSchema>
 
 export type SavingGoal = z.infer<typeof SavingGoalSchema>
 export type CreateSavingGoalInput = z.infer<typeof CreateSavingGoalInputSchema>
@@ -562,31 +584,44 @@ export const goalsApi = {
   },
 
   /**
-   * POST /api/savings/entries/:entryId/assign-goal/:goalId
-   * Asigna una entrada de ahorro a una meta
+   * POST /api/savings/goals/entries/:entryId/assign-goal/:goalId
+   * Asigna una entrada de ahorro a una meta (con monto parcial opcional)
    */
-  async assignEntryToGoal(entryId: number, goalId: number): Promise<{ linked: boolean }> {
+  async assignEntryToGoal(entryId: number, goalId: number, amountCents?: number): Promise<{ linked: boolean }> {
+    const body = amountCents !== undefined ? { amount_cents: amountCents } : undefined
     const data = await apiFetch<{ linked: boolean }>(
-      `/savings/entries/${entryId}/assign-goal/${goalId}`,
+      `/savings/goals/entries/${entryId}/assign-goal/${goalId}`,
       {
         method: 'POST',
+        ...(body ? { body: JSON.stringify(body) } : {}),
       }
     )
     return data
   },
 
   /**
-   * DELETE /api/savings/entries/:entryId/assign-goal/:goalId
+   * DELETE /api/savings/goals/entries/:entryId/assign-goal/:goalId
    * Desvincula una entrada de ahorro de una meta
    */
-  async unassignEntryFromGoal(entryId: number, goalId: number): Promise<{ unlinked: boolean }> {
-    const data = await apiFetch<{ unlinked: boolean }>(
-      `/savings/entries/${entryId}/assign-goal/${goalId}`,
+  async unassignEntryFromGoal(entryId: number, goalId: number): Promise<{ unlinked: boolean; amount_cents_freed: number }> {
+    const data = await apiFetch<{ unlinked: boolean; amount_cents_freed: number }>(
+      `/savings/goals/entries/${entryId}/assign-goal/${goalId}`,
       {
         method: 'DELETE',
       }
     )
     return data
+  },
+
+  /**
+   * GET /api/savings/goals/entries/:entryId/allocations
+   * Ver asignaciones de un entry
+   */
+  async getEntryAllocations(entryId: number): Promise<EntryAllocations> {
+    const data = await apiFetch<EntryAllocations>(
+      `/savings/goals/entries/${entryId}/allocations`
+    )
+    return EntryAllocationsSchema.parse(data)
   },
 
   /**

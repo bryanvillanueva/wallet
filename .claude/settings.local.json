@@ -5,7 +5,9 @@
       "Bash(mkdir:*)",
       "Bash(npm run dev:*)",
       "Bash(npm run build:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build)",
+      "Bash(npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []

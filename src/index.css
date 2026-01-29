@@ -1,10 +1,13 @@
 @import "tailwindcss";
 
-/* Glassmorphism / Liquid Glass Theme */
+/* Theme tokens */
 @theme {
-  /* Accent Colors */
   --color-accent-light: #22d3ee;
   --color-accent-dark: #4da3ff;
+  --color-primary: #d821f9;
+  --color-primary-dark: #b01cd4;
+  --color-primary-light: #e85ffc;
+  --font-nunito: 'Nunito', sans-serif;
 }
 
 /* Base styles */
@@ -13,10 +16,77 @@ html {
 }
 
 body {
+  font-family: 'Nunito', sans-serif;
   @apply text-[#1a1a1a] dark:text-white;
 }
 
-/* Glassmorphism utilities */
+/* ============================================ */
+/* Fintech Theme (Savings, Goals)               */
+/* ============================================ */
+
+.fintech-card {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.fintech-input {
+  background: #f5f5f7;
+  border: 1.5px solid #e8e8ed;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.fintech-input:focus {
+  background: #fff;
+  border-color: #d821f9;
+  box-shadow: 0 0 0 3px rgba(216, 33, 249, 0.12);
+  outline: none;
+}
+
+.fintech-btn-primary {
+  background: linear-gradient(135deg, #d821f9 0%, #b01cd4 100%);
+  color: white;
+  border-radius: 14px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(216, 33, 249, 0.3);
+}
+
+.fintech-btn-primary:hover {
+  box-shadow: 0 6px 24px rgba(216, 33, 249, 0.45);
+  transform: translateY(-1px);
+}
+
+.fintech-btn-primary:active {
+  transform: translateY(0);
+}
+
+.fintech-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.fintech-btn-secondary {
+  background: #f5f5f7;
+  color: #555;
+  border-radius: 14px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  border: 1.5px solid #e8e8ed;
+}
+
+.fintech-btn-secondary:hover {
+  background: #ececef;
+}
+
+/* ============================================ */
+/* Glassmorphism (legacy screens)               */
+/* ============================================ */
+
 .glass-card {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px) saturate(180%);
