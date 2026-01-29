@@ -6,6 +6,14 @@ import type { EntryAllocations } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
+import { Icons, getGoalIconConfig } from '../components/Icons'
+import {
+  PlusIcon,
+  XMarkIcon,
+  TrashIcon,
+  LinkIcon,
+} from '@heroicons/react/24/outline'
+import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import type { SavingGoal } from '../lib/api'
 
 export function SavingGoals() {
@@ -88,7 +96,7 @@ export function SavingGoals() {
   }
 
   const handleDeleteGoal = async (goalId: number) => {
-    if (!confirm('¿Estás seguro de eliminar esta meta?')) return
+    if (!confirm('Estas seguro de eliminar esta meta?')) return
 
     try {
       setError(null)
@@ -108,7 +116,6 @@ export function SavingGoals() {
     setLoadingAllocations(true)
 
     try {
-      // Cargar allocations de cada entry de depósito
       const allocationsMap = new Map<number, EntryAllocations>()
       const results = await Promise.all(
         depositEntries.map((entry) => goalsApi.getEntryAllocations(entry.id))
@@ -122,12 +129,6 @@ export function SavingGoals() {
     } finally {
       setLoadingAllocations(false)
     }
-  }
-
-  const isEntryAssignedToGoal = (entryId: number, goalId: number) => {
-    const alloc = entryAllocations.get(entryId)
-    if (!alloc) return false
-    return alloc.allocations.some((a) => a.goal_id === goalId)
   }
 
   const getEntryAllocationForGoal = (entryId: number, goalId: number) => {
@@ -145,7 +146,6 @@ export function SavingGoals() {
       const amountCents = amountStr ? Math.round(parseFloat(amountStr) * 100) : undefined
       await goalsApi.assignEntryToGoal(entryId, assignModalGoal.id, amountCents)
 
-      // Recargar allocations de este entry
       const updated = await goalsApi.getEntryAllocations(entryId)
       setEntryAllocations((prev) => new Map(prev).set(entryId, updated))
       setAssignAmounts((prev) => {
@@ -166,7 +166,6 @@ export function SavingGoals() {
       setError(null)
       await goalsApi.unassignEntryFromGoal(entryId, assignModalGoal.id)
 
-      // Recargar allocations de este entry
       const updated = await goalsApi.getEntryAllocations(entryId)
       setEntryAllocations((prev) => new Map(prev).set(entryId, updated))
       await loadAllData()
@@ -183,12 +182,12 @@ export function SavingGoals() {
   }
 
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Sin fecha límite'
+    if (!dateStr) return 'Sin fecha limite'
 
     const dateToFormat = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`
     const date = new Date(dateToFormat)
 
-    if (isNaN(date.getTime())) return 'Fecha inválida'
+    if (isNaN(date.getTime())) return 'Fecha invalida'
 
     return new Intl.DateTimeFormat('es', {
       day: '2-digit',
@@ -214,7 +213,6 @@ export function SavingGoals() {
 
     if (daysRemaining <= 0) return null
 
-    // Calcular quincenas restantes (asumiendo 15 días por quincena)
     const payPeriodsRemaining = Math.ceil(daysRemaining / 15)
 
     if (payPeriodsRemaining <= 0) return null
@@ -222,10 +220,17 @@ export function SavingGoals() {
     return remaining / payPeriodsRemaining
   }
 
+  // Resumen general
+  const totalTarget = savingGoals.reduce((sum, g) => sum + g.target_amount_cents, 0)
+  const totalSaved = savingGoals.reduce((sum, g) => sum + (g.saved_cents || 0), 0)
+  const overallProgress = totalTarget > 0 ? Math.min((totalSaved / totalTarget) * 100, 100) : 0
+  const completedGoals = savingGoals.filter(g => calculateProgress(g) >= 100).length
+
   if (isLoading) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen bg-[#f5f5f7]">
+        <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-12 pb-24 rounded-b-[32px]" />
+        <div className="px-5 -mt-16">
           <LoadingBar />
         </div>
       </div>
@@ -233,130 +238,193 @@ export function SavingGoals() {
   }
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-semibold text-[#1a1a1a] dark:text-white">Metas de Ahorro</h1>
-          {!showCreateForm && (
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="px-4 py-2 glass-button rounded-2xl text-[13px] font-semibold text-[#22d3ee] dark:text-[#4da3ff]"
-            >
-              + Nueva Meta
-            </button>
+    <div className="min-h-screen bg-[#f5f5f7]">
+      {/* ============ HEADER PURPLE ============ */}
+      <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-8 pb-28 rounded-b-[32px]">
+        <div className="max-w-lg mx-auto">
+          <p className="text-white/70 text-sm font-semibold mb-1">Planifica tu futuro</p>
+          <h1 className="text-white text-2xl font-extrabold mb-6">Metas de Ahorro</h1>
+
+          {/* Progreso general */}
+          {savingGoals.length > 0 && (
+            <div>
+              <div className="flex items-end justify-between mb-2">
+                <p className="text-white/60 text-xs font-bold uppercase tracking-widest">
+                  Progreso General
+                </p>
+                <p className="text-white text-xl font-black">
+                  {overallProgress.toFixed(0)}%
+                </p>
+              </div>
+              <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out bg-white"
+                  style={{ width: `${overallProgress}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-white/50 text-xs font-semibold">
+                  {formatCurrency(totalSaved)} de {formatCurrency(totalTarget)}
+                </p>
+                <p className="text-white/50 text-xs font-semibold">
+                  {completedGoals}/{savingGoals.length} completadas
+                </p>
+              </div>
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Error global */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/20 backdrop-filter backdrop-blur-xl border border-red-400/50 rounded-2xl">
-            <p className="text-[13px] text-red-700 dark:text-red-300 font-medium">{error}</p>
+      {/* ============ CONTENT ============ */}
+      <div className="max-w-lg mx-auto px-5 -mt-16 pb-8">
+        {/* Resumen cards */}
+        {savingGoals.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="fintech-card p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
+                <Icons.Target className="w-5 h-5 text-[#d821f9]" />
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 font-bold uppercase">Metas</p>
+                <p className="text-[16px] font-extrabold text-gray-800">{savingGoals.length}</p>
+              </div>
+            </div>
+            <div className="fintech-card p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                <CheckCircleIcon className="w-5 h-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-[11px] text-gray-400 font-bold uppercase">Logradas</p>
+                <p className="text-[16px] font-extrabold text-gray-800">{completedGoals}</p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Formulario de creación */}
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+            <XMarkIcon
+              className="w-5 h-5 text-red-400 cursor-pointer shrink-0 mt-0.5"
+              onClick={() => setError(null)}
+            />
+            <p className="text-sm text-red-600 font-semibold">{error}</p>
+          </div>
+        )}
+
+        {/* Boton nueva meta */}
+        {!showCreateForm && (
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Nueva Meta
+          </button>
+        )}
+
+        {/* ============ FORMULARIO ============ */}
         {showCreateForm && (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 mb-6">
-            <h3 className="text-[17px] font-semibold text-[#1a1a1a] dark:text-white mb-4">
-              Nueva Meta de Ahorro
-            </h3>
+          <div className="fintech-card p-5 mb-5">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-extrabold text-gray-800">Nueva Meta</h3>
+              <button
+                onClick={() => {
+                  setShowCreateForm(false)
+                  reset()
+                }}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              >
+                <XMarkIcon className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
 
             <form onSubmit={handleSubmit(onCreateGoal)} className="space-y-4">
               {/* Nombre */}
               <div>
-                <label htmlFor="name" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                   Nombre de la Meta
                 </label>
                 <input
-                  id="name"
                   type="text"
                   {...register('name')}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                   placeholder="Ej: Vacaciones, Auto nuevo, Fondo de emergencia"
                 />
                 {errors.name && (
-                  <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                    {errors.name.message}
-                  </p>
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.name.message}</p>
                 )}
               </div>
 
               {/* Monto objetivo */}
               <div>
-                <label htmlFor="target_amount_cents" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                   Monto Objetivo
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[15px]">
-                    $
-                  </span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
                   <input
-                    id="target_amount_cents"
                     type="number"
                     step="0.01"
                     {...register('target_amount_cents', {
                       setValueAs: (v) => (v === '' || v === null ? 0 : Math.round(parseFloat(v) * 100)),
                     })}
-                    className="glass-input w-full pl-8 pr-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
                     placeholder="0.00"
                   />
                 </div>
                 {errors.target_amount_cents && (
-                  <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                    {errors.target_amount_cents.message}
-                  </p>
+                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.target_amount_cents.message}</p>
                 )}
-                <p className="mt-1 text-[11px] text-[#666] dark:text-neutral-500">
-                  Ingresa el monto objetivo en dólares (ej: 5000.00)
+                <p className="mt-1 text-[11px] text-gray-400 font-medium">
+                  Ingresa el monto en dolares (ej: 5000.00)
                 </p>
               </div>
 
-              {/* Fecha objetivo (opcional) */}
+              {/* Fecha objetivo */}
               <div>
-                <label htmlFor="target_date" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                  Fecha Objetivo (opcional)
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Fecha Objetivo <span className="text-gray-300 normal-case">(opcional)</span>
                 </label>
                 <input
-                  id="target_date"
                   type="date"
                   {...register('target_date')}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                 />
-                <p className="mt-1 text-[11px] text-[#666] dark:text-neutral-500">
-                  Si defines una fecha, te sugeriremos cuánto ahorrar por quincena
+                <p className="mt-1 text-[11px] text-gray-400 font-medium">
+                  Si defines una fecha, te sugeriremos cuanto ahorrar por quincena
                 </p>
               </div>
 
-              {/* Nota (opcional) */}
+              {/* Nota */}
               <div>
-                <label htmlFor="note" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                  Nota (opcional)
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Nota <span className="text-gray-300 normal-case">(opcional)</span>
                 </label>
                 <textarea
-                  id="note"
                   {...register('note')}
                   rows={2}
-                  className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300 resize-none"
+                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold resize-none"
                   placeholder="Ej: Para viaje a Europa en verano"
                 />
               </div>
 
               {/* Botones */}
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreateForm(false)
                     reset()
                   }}
-                  className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
+                  className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
                 >
                   {isSubmitting ? 'Creando...' : 'Crear Meta'}
                 </button>
@@ -365,19 +433,20 @@ export function SavingGoals() {
           </div>
         )}
 
-        {/* Lista de metas */}
+        {/* ============ LISTA DE METAS ============ */}
         {savingGoals.length === 0 ? (
-          <div className="glass-card-light dark:glass-card-dark rounded-2xl p-8 text-center">
-            <p className="text-[17px] font-medium text-[#1a1a1a] dark:text-white mb-2">
-              No tienes metas de ahorro
-            </p>
-            <p className="text-[15px] text-[#666] dark:text-neutral-400 mb-4">
+          <div className="fintech-card p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
+              <Icons.Target className="w-8 h-8 text-[#d821f9]" />
+            </div>
+            <p className="text-base font-bold text-gray-800 mb-1">Sin metas de ahorro</p>
+            <p className="text-sm text-gray-400 mb-5">
               Crea tu primera meta para comenzar a ahorrar con objetivo
             </p>
             {!showCreateForm && (
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="px-4 py-2 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)]"
+                className="px-6 py-3 fintech-btn-primary text-sm"
               >
                 Crear Primera Meta
               </button>
@@ -389,238 +458,311 @@ export function SavingGoals() {
               const progress = calculateProgress(goal)
               const suggestedContribution = calculateSuggestedContribution(goal)
               const isCompleted = progress >= 100
+              const iconConfig = getGoalIconConfig(goal.name)
+              const GoalIcon = iconConfig.icon
 
               return (
-                <div
-                  key={goal.id}
-                  className="glass-card-light dark:glass-card-dark rounded-2xl p-6"
-                >
-                  {/* Encabezado */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white mb-1">
-                        {goal.name}
-                      </h3>
-                      {goal.note && (
-                        <p className="text-[13px] text-[#666] dark:text-neutral-400 mb-2">
-                          {goal.note}
+                <div key={goal.id} className="fintech-card overflow-hidden">
+                  {/* Card header con icono */}
+                  <div className="p-5 pb-4">
+                    <div className="flex items-start gap-4">
+                      {/* Icono auto-detectado */}
+                      <div className={`w-12 h-12 rounded-2xl ${iconConfig.bg} flex items-center justify-center shrink-0`}>
+                        <GoalIcon className={`w-6 h-6 ${iconConfig.color}`} />
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-base font-extrabold text-gray-800 truncate">
+                              {goal.name}
+                            </h3>
+                            {goal.note && (
+                              <p className="text-xs text-gray-400 font-medium mt-0.5 truncate">
+                                {goal.note}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteGoal(goal.id)}
+                            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center shrink-0 transition-colors"
+                          >
+                            <TrashIcon className="w-4 h-4 text-gray-300 hover:text-red-400" />
+                          </button>
+                        </div>
+
+                        {/* Meta info */}
+                        <p className="text-xs text-gray-400 font-semibold mt-1">
+                          {formatDate(goal.target_date)}
                         </p>
-                      )}
-                      <p className="text-[13px] text-[#666] dark:text-neutral-400">
-                        Meta: {formatCurrency(goal.target_amount_cents)} · {formatDate(goal.target_date)}
-                      </p>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteGoal(goal.id)}
-                      className="px-3 py-1 glass-button rounded-full text-[13px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all"
-                    >
-                      🗑️
-                    </button>
                   </div>
 
-                  {/* Barra de progreso */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[13px] font-medium text-[#666] dark:text-neutral-400">
-                        Progreso
-                      </span>
-                      <span className={`text-[15px] font-bold ${
+                  {/* Progreso */}
+                  <div className="px-5 pb-4">
+                    <div className="flex items-end justify-between mb-2">
+                      <div>
+                        <p className="text-xl font-black text-gray-800">
+                          {formatCurrency(goal.saved_cents || 0)}
+                        </p>
+                        <p className="text-xs text-gray-400 font-semibold">
+                          de {formatCurrency(goal.target_amount_cents)}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-extrabold px-2.5 py-1 rounded-full ${
                         isCompleted
-                          ? 'text-green-600 dark:text-green-400'
-                          : 'text-[#22d3ee] dark:text-[#4da3ff]'
+                          ? 'bg-green-50 text-green-500'
+                          : 'bg-purple-50 text-[#d821f9]'
                       }`}>
-                        {progress.toFixed(1)}%
+                        {progress.toFixed(0)}%
                       </span>
                     </div>
-                    <div className="h-3 bg-white/20 dark:bg-white/10 rounded-full overflow-hidden">
+
+                    {/* Barra de progreso moderna */}
+                    <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
                       <div
-                        className={`h-full transition-all duration-500 ease-out ${
+                        className={`h-full rounded-full transition-all duration-700 ease-out ${
                           isCompleted
-                            ? 'bg-gradient-to-r from-green-500 to-green-600'
-                            : 'bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6]'
+                            ? 'bg-gradient-to-r from-green-400 to-emerald-500'
+                            : 'bg-gradient-to-r from-[#d821f9] to-[#a018c0]'
                         }`}
                         style={{ width: `${progress}%` }}
                       />
                     </div>
                   </div>
 
-                  {/* Estadísticas */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="glass-card-light dark:glass-card-dark rounded-xl p-3">
-                      <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-1">
-                        Ahorrado
-                      </p>
-                      <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
-                        {formatCurrency(goal.saved_cents || 0)}
-                      </p>
-                    </div>
-                    <div className="glass-card-light dark:glass-card-dark rounded-xl p-3">
-                      <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-1">
-                        Restante
-                      </p>
-                      <p className="text-[17px] font-bold text-[#22d3ee] dark:text-[#4da3ff]">
-                        {formatCurrency(goal.remaining_cents || goal.target_amount_cents)}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* Sugerencia de aporte */}
                   {suggestedContribution && !isCompleted && (
-                    <div className="glass-card-light dark:glass-card-dark rounded-xl p-3 mb-4 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30">
-                      <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-1">
-                        Aporte sugerido por quincena
-                      </p>
-                      <p className="text-[17px] font-bold text-yellow-600 dark:text-yellow-400">
-                        {formatCurrency(suggestedContribution)}
-                      </p>
+                    <div className="mx-5 mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <Icons.Calendar className="w-4 h-4 text-amber-500 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-amber-600/70 font-bold uppercase">Aporte sugerido / quincena</p>
+                          <p className="text-sm font-extrabold text-amber-600">
+                            {formatCurrency(suggestedContribution)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {/* Mensaje de completado */}
                   {isCompleted && (
-                    <div className="glass-card-light dark:glass-card-dark rounded-xl p-3 mb-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30">
-                      <p className="text-[15px] font-semibold text-green-600 dark:text-green-400 text-center">
-                        🎉 ¡Meta alcanzada!
-                      </p>
+                    <div className="mx-5 mb-4 p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-2">
+                      <CheckCircleIcon className="w-5 h-5 text-green-500 shrink-0" />
+                      <p className="text-sm font-bold text-green-600">Meta alcanzada</p>
                     </div>
                   )}
 
-                  {/* Botón asignar entradas */}
-                  <button
-                    onClick={() => openAssignModal(goal)}
-                    className="w-full px-4 py-2 glass-button rounded-2xl text-[13px] font-semibold text-[#22d3ee] dark:text-[#4da3ff] hover:bg-[#22d3ee]/10 transition-all"
-                  >
-                    📎 Asignar Aportes ({goal.assigned_entry_ids ? goal.assigned_entry_ids.split(',').length : 0})
-                  </button>
+                  {/* Botón asignar aportes */}
+                  <div className="px-5 pb-5">
+                    <button
+                      onClick={() => openAssignModal(goal)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-[#d821f9] bg-purple-50 hover:bg-purple-100 transition-colors"
+                    >
+                      <LinkIcon className="w-4 h-4" />
+                      Asignar Aportes
+                      {goal.assigned_entry_ids && (
+                        <span className="text-xs bg-[#d821f9] text-white px-2 py-0.5 rounded-full font-bold">
+                          {goal.assigned_entry_ids.split(',').length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
 
-        {/* Modal de asignación */}
+        {/* ============ MODAL ASIGNACION ============ */}
         {assignModalGoal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-              <h3 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white mb-2">
-                Asignar Aportes a: {assignModalGoal.name}
-              </h3>
-              <p className="text-[13px] text-[#666] dark:text-neutral-400 mb-4">
-                Puedes asignar montos parciales de cada aporte a esta meta
-              </p>
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center"
+            onClick={() => {
+              setAssignModalGoal(null)
+              setEntryAllocations(new Map())
+              setAssignAmounts(new Map())
+            }}
+          >
+            <div
+              className="bg-white w-full md:max-w-lg md:rounded-2xl rounded-t-3xl max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Handle bar (mobile) */}
+              <div className="flex justify-center pt-3 pb-1 md:hidden">
+                <div className="w-10 h-1 bg-gray-200 rounded-full" />
+              </div>
 
-              {loadingAllocations ? (
-                <LoadingBar />
-              ) : depositEntries.length === 0 ? (
-                <p className="text-[15px] text-[#666] dark:text-neutral-400 mb-4">
-                  No hay aportes disponibles para asignar
-                </p>
-              ) : (
-                <div className="space-y-3 mb-6">
-                  {depositEntries.map((entry) => {
-                    const alloc = entryAllocations.get(entry.id)
-                    const unassigned = alloc ? alloc.unassigned_cents : entry.amount_cents
-                    const assignedToThis = getEntryAllocationForGoal(entry.id, assignModalGoal.id)
-                    const isAssigned = !!assignedToThis
-
-                    return (
-                      <div
-                        key={entry.id}
-                        className="p-4 glass-card-light dark:glass-card-dark rounded-xl"
-                      >
-                        {/* Info del entry */}
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">
-                              {formatDate(entry.entry_date)}
-                            </p>
-                            {entry.note && (
-                              <p className="text-[13px] text-[#666] dark:text-neutral-400">
-                                {entry.note}
-                              </p>
-                            )}
-                          </div>
-                          <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
-                            {formatCurrency(entry.amount_cents)}
-                          </p>
+              {/* Modal header */}
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const ic = getGoalIconConfig(assignModalGoal.name)
+                      const ModalIcon = ic.icon
+                      return (
+                        <div className={`w-10 h-10 rounded-xl ${ic.bg} flex items-center justify-center`}>
+                          <ModalIcon className={`w-5 h-5 ${ic.color}`} />
                         </div>
-
-                        {/* Detalle de allocations */}
-                        {alloc && alloc.allocations.length > 0 && (
-                          <div className="mb-2 pl-2 border-l-2 border-[#22d3ee]/30 dark:border-[#4da3ff]/30">
-                            {alloc.allocations.map((a) => (
-                              <p key={a.goal_id} className={`text-[11px] ${
-                                a.goal_id === assignModalGoal.id
-                                  ? 'text-[#22d3ee] dark:text-[#4da3ff] font-semibold'
-                                  : 'text-[#666] dark:text-neutral-400'
-                              }`}>
-                                {a.goal_name}: {formatCurrency(a.amount_cents)}
-                              </p>
-                            ))}
-                            <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
-                              Disponible: {formatCurrency(unassigned)}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Acciones */}
-                        {isAssigned ? (
-                          <div className="flex items-center justify-between">
-                            <p className="text-[13px] font-medium text-[#22d3ee] dark:text-[#4da3ff]">
-                              Asignado: {formatCurrency(assignedToThis.amount_cents)}
-                            </p>
-                            <button
-                              onClick={() => handleUnassignEntry(entry.id)}
-                              className="px-3 py-1 glass-button rounded-full text-[11px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-all"
-                            >
-                              Desasignar
-                            </button>
-                          </div>
-                        ) : unassigned > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <div className="relative flex-1">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[13px]">
-                                $
-                              </span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={assignAmounts.get(entry.id) || ''}
-                                onChange={(e) => {
-                                  setAssignAmounts((prev) => new Map(prev).set(entry.id, e.target.value))
-                                }}
-                                placeholder={`Max ${(unassigned / 100).toFixed(2)}`}
-                                className="glass-input w-full pl-7 pr-3 py-2 rounded-xl text-[#1a1a1a] dark:text-white text-[13px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none"
-                              />
-                            </div>
-                            <button
-                              onClick={() => handleAssignEntry(entry.id)}
-                              className="px-3 py-2 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-xl text-[13px] font-semibold text-white transition-all hover:-translate-y-0.5"
-                            >
-                              Asignar
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-[#999] dark:text-neutral-500 italic">
-                            Sin monto disponible
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
+                      )
+                    })()}
+                    <div>
+                      <h3 className="text-base font-extrabold text-gray-800">
+                        {assignModalGoal.name}
+                      </h3>
+                      <p className="text-xs text-gray-400 font-semibold">
+                        Asignar aportes a esta meta
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAssignModalGoal(null)
+                      setEntryAllocations(new Map())
+                      setAssignAmounts(new Map())
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    <XMarkIcon className="w-4 h-4 text-gray-500" />
+                  </button>
                 </div>
-              )}
+              </div>
 
-              <button
-                onClick={() => {
-                  setAssignModalGoal(null)
-                  setEntryAllocations(new Map())
-                  setAssignAmounts(new Map())
-                }}
-                className="w-full px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
-              >
-                Cerrar
-              </button>
+              {/* Modal body */}
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {loadingAllocations ? (
+                  <LoadingBar />
+                ) : depositEntries.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                      <Icons.PiggyBank className="w-7 h-7 text-gray-300" />
+                    </div>
+                    <p className="text-sm font-bold text-gray-500">No hay aportes disponibles</p>
+                    <p className="text-xs text-gray-400 mt-1">Registra un deposito primero</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {depositEntries.map((entry) => {
+                      const alloc = entryAllocations.get(entry.id)
+                      const unassigned = alloc ? alloc.unassigned_cents : entry.amount_cents
+                      const assignedToThis = getEntryAllocationForGoal(entry.id, assignModalGoal.id)
+                      const isAssigned = !!assignedToThis
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`p-4 rounded-xl border transition-colors ${
+                            isAssigned
+                              ? 'border-[#d821f9]/30 bg-purple-50/50'
+                              : 'border-gray-100 bg-white'
+                          }`}
+                        >
+                          {/* Entry info */}
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center shrink-0">
+                                <Icons.TrendingUp className="w-4 h-4 text-green-500" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-gray-800">
+                                  {formatDate(entry.entry_date)}
+                                </p>
+                                {entry.note && (
+                                  <p className="text-xs text-gray-400 font-medium">{entry.note}</p>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-base font-extrabold text-green-500">
+                              {formatCurrency(entry.amount_cents)}
+                            </p>
+                          </div>
+
+                          {/* Allocations existentes */}
+                          {alloc && alloc.allocations.length > 0 && (
+                            <div className="mb-2 ml-12 space-y-0.5">
+                              {alloc.allocations.map((a) => (
+                                <p key={a.goal_id} className={`text-[11px] font-semibold ${
+                                  a.goal_id === assignModalGoal.id
+                                    ? 'text-[#d821f9]'
+                                    : 'text-gray-400'
+                                }`}>
+                                  {a.goal_name}: {formatCurrency(a.amount_cents)}
+                                </p>
+                              ))}
+                              <p className="text-[11px] text-gray-300 font-semibold">
+                                Disponible: {formatCurrency(unassigned)}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Acciones */}
+                          {isAssigned ? (
+                            <div className="flex items-center justify-between ml-12">
+                              <div className="flex items-center gap-1.5">
+                                <CheckCircleIcon className="w-4 h-4 text-[#d821f9]" />
+                                <p className="text-xs font-bold text-[#d821f9]">
+                                  Asignado: {formatCurrency(assignedToThis.amount_cents)}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => handleUnassignEntry(entry.id)}
+                                className="px-3 py-1.5 text-xs font-bold text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                Quitar
+                              </button>
+                            </div>
+                          ) : unassigned > 0 ? (
+                            <div className="flex items-center gap-2 ml-12">
+                              <div className="relative flex-1">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">
+                                  $
+                                </span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={assignAmounts.get(entry.id) || ''}
+                                  onChange={(e) => {
+                                    setAssignAmounts((prev) => new Map(prev).set(entry.id, e.target.value))
+                                  }}
+                                  placeholder={`Max ${(unassigned / 100).toFixed(2)}`}
+                                  className="fintech-input w-full pl-7 pr-3 py-2 text-xs text-gray-800 font-semibold"
+                                />
+                              </div>
+                              <button
+                                onClick={() => handleAssignEntry(entry.id)}
+                                className="px-4 py-2 fintech-btn-primary text-xs whitespace-nowrap"
+                              >
+                                Asignar
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-gray-300 font-semibold ml-12 italic">
+                              Sin monto disponible
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal footer */}
+              <div className="px-5 py-4 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setAssignModalGoal(null)
+                    setEntryAllocations(new Map())
+                    setAssignAmounts(new Map())
+                  }}
+                  className="w-full py-3 fintech-btn-secondary text-sm"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         )}
