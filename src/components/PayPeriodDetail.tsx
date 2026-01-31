@@ -5,6 +5,7 @@ import {
   summaryApi,
   transactionsApi,
   savingsApi,
+  goalsApi,
   CreateSavingEntryInputSchema,
   type PayPeriodSummary,
   type Transaction,
@@ -13,18 +14,17 @@ import {
 } from '../lib/api'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from './LoadingBar'
+import { Icons } from './Icons'
 import {
-  BanknotesIcon,
-  CurrencyDollarIcon,
-  ArchiveBoxIcon,
-  BuildingLibraryIcon,
-  ClipboardDocumentCheckIcon,
+  XMarkIcon,
+  ArrowLeftIcon,
   SparklesIcon,
-  ArrowUpTrayIcon,
-  ArrowDownTrayIcon,
+  BanknotesIcon,
   ArrowPathIcon,
   ScaleIcon,
-  ArrowDownCircleIcon
+  ArrowDownCircleIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 
 interface PayPeriodDetailProps {
@@ -32,8 +32,9 @@ interface PayPeriodDetailProps {
   onClose: () => void
 }
 
+
 export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
-  const { accounts, categories } = useWalletStore()
+  const { accounts, categories, savingGoals, setSavingGoals } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [summary, setSummary] = useState<PayPeriodSummary | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -57,6 +58,8 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
       entry_date: payPeriod.pay_date,
       pay_period_id: payPeriod.id,
       note: '',
+      goal_id: null as number | null,
+      goal_amount_cents: null as number | null,
     },
   })
 
@@ -69,7 +72,7 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
       setIsLoading(true)
       setError(null)
 
-      const [summaryData, transactionsData, savingEntriesData] = await Promise.all([
+      const [summaryData, transactionsData, savingEntriesData, goalsData] = await Promise.all([
         summaryApi.getPayPeriodSummary(payPeriod.id),
         transactionsApi.list({
           userId: payPeriod.user_id,
@@ -79,11 +82,13 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
           userId: payPeriod.user_id,
           pay_period_id: payPeriod.id,
         }),
+        goalsApi.listByUser(payPeriod.user_id),
       ])
 
       setSummary(summaryData)
       setTransactions(transactionsData)
       setSavingEntries(savingEntriesData)
+      setSavingGoals(goalsData)
     } catch (err) {
       console.error('Error loading pay period detail:', err)
       setError(err instanceof Error ? err.message : 'Error al cargar datos')
@@ -101,12 +106,15 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
       entry_date: payPeriod.pay_date,
       pay_period_id: payPeriod.id,
       note: `Ahorro de quincena ${formatDate(payPeriod.pay_date)}`,
+      goal_id: null,
+      goal_amount_cents: null,
     })
   }
 
   const onCreateSavingEntry = async (data: any) => {
     try {
       setError(null)
+      const goalId = data.goal_id ? Number(data.goal_id) : null
       await savingsApi.createEntry({
         user_id: payPeriod.user_id,
         account_id: data.account_id,
@@ -114,11 +122,12 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
         entry_date: data.entry_date,
         pay_period_id: data.pay_period_id || null,
         note: data.note || null,
+        goal_id: goalId,
+        goal_amount_cents: goalId ? data.amount_cents : null,
       })
 
       setShowSavingsModal(false)
       reset()
-      // Recargar datos para actualizar savings_out_cents
       await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar ahorro')
@@ -136,7 +145,7 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
     if (!dateStr) return 'Fecha no disponible'
     const dateToFormat = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`
     const date = new Date(dateToFormat)
-    if (isNaN(date.getTime())) return 'Fecha inválida'
+    if (isNaN(date.getTime())) return 'Fecha invalida'
     return new Intl.DateTimeFormat('es', {
       day: '2-digit',
       month: 'short',
@@ -149,21 +158,11 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
   }
 
   const getCategoryName = (categoryId: number | null) => {
-    if (!categoryId) return 'Sin categoría'
-    return categories.find((c) => c.id === categoryId)?.name || `Categoría #${categoryId}`
+    if (!categoryId) return 'Sin categoria'
+    return categories.find((c) => c.id === categoryId)?.name || `Categoria #${categoryId}`
   }
 
-  const getTransactionTypeInfo = (type: string) => {
-    const types: Record<string, { label: string; Icon: React.ElementType; color: string }> = {
-      income: { label: 'Ingreso', Icon: BanknotesIcon, color: 'text-green-600 dark:text-green-400' },
-      expense: { label: 'Gasto', Icon: ArrowDownCircleIcon, color: 'text-red-600 dark:text-red-400' },
-      transfer: { label: 'Transferencia', Icon: ArrowPathIcon, color: 'text-blue-600 dark:text-blue-400' },
-      adjustment: { label: 'Ajuste', Icon: ScaleIcon, color: 'text-yellow-600 dark:text-yellow-400' },
-    }
-    return types[type] || types.expense
-  }
-
-  // Agrupar transacciones por tipo
+  // Agrupar transacciones
   const incomeTransactions = transactions.filter((t) => t.type === 'income')
   const expenseTransactions = transactions.filter((t) => t.type === 'expense')
   const transferTransactions = transactions.filter((t) => t.type === 'transfer')
@@ -171,8 +170,9 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen p-6">
-        <div className="max-w-6xl mx-auto">
+      <div className="min-h-screen bg-[#f5f5f7]">
+        <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-12 pb-24 rounded-b-[32px]" />
+        <div className="px-5 -mt-16">
           <LoadingBar />
         </div>
       </div>
@@ -180,308 +180,306 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
   }
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header con botón volver */}
-        <div className="flex items-center gap-4 mb-8">
+    <div className="min-h-screen bg-[#f5f5f7]">
+      {/* ============ HEADER PURPLE ============ */}
+      <div className="bg-gradient-to-br from-[#d821f9] to-[#a018c0] px-6 pt-6 pb-28 rounded-b-[32px]">
+        <div className="max-w-lg mx-auto">
+          {/* Boton volver */}
           <button
             onClick={onClose}
-            className="p-2 glass-button rounded-xl hover:bg-white/20 transition-all duration-200"
+            className="flex items-center gap-2 text-white/70 hover:text-white text-sm font-semibold mb-4 transition-colors"
           >
-            <svg className="w-6 h-6 text-[#666] dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ArrowLeftIcon className="w-4 h-4" />
+            Volver al resumen
           </button>
-          <div>
-            <h1 className="text-3xl font-semibold text-[#1a1a1a] dark:text-white">
-              Quincena {formatDate(payPeriod.pay_date)}
-            </h1>
-            {payPeriod.note && (
-              <p className="text-[15px] text-[#666] dark:text-neutral-400 mt-1">
-                {payPeriod.note}
-              </p>
-            )}
-          </div>
-        </div>
 
-        {/* Error */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/20 backdrop-filter backdrop-blur-xl border border-red-400/50 rounded-2xl">
-            <p className="text-[13px] text-red-700 dark:text-red-300 font-medium">{error}</p>
-          </div>
-        )}
+          <p className="text-white/70 text-sm font-semibold mb-1">Detalle de quincena</p>
+          <h1 className="text-white text-2xl font-extrabold mb-1">
+            {formatDate(payPeriod.pay_date)}
+          </h1>
+          {payPeriod.note && (
+            <p className="text-white/50 text-sm font-semibold">{payPeriod.note}</p>
+          )}
 
-        {/* Resumen Financiero */}
-        {summary && (
-          <div className="mb-8">
-            <h2 className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-4">
-              Resumen Financiero
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {/* Ingreso Bruto */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <BanknotesIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Ingreso Bruto
-                  </p>
-                </div>
-                <p className="text-[17px] font-bold text-green-600 dark:text-green-400">
-                  {formatCurrency(summary.gross_income_cents)}
-                </p>
-                <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
-                  Sueldo
+          {/* Ingreso total de esta quincena */}
+          {summary && (
+            <div className="flex items-center justify-between mt-5">
+              <div>
+                <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">Ingresos</p>
+                <p className="text-white text-2xl font-black">
+                  {formatCurrency(summary.gross_income_cents + summary.additional_income_cents)}
                 </p>
               </div>
-
-              {/* Ingresos Adicionales */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <CurrencyDollarIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Ing. Adicionales
-                  </p>
-                </div>
-                <p className="text-[17px] font-bold text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(summary.additional_income_cents)}
-                </p>
-                <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
-                  Otros negocios
-                </p>
-              </div>
-
-              {/* Gastos */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <ArchiveBoxIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Gastos
-                  </p>
-                </div>
-                <p className="text-[17px] font-bold text-red-600 dark:text-red-400">
+              <div className="text-right">
+                <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">Gastos</p>
+                <p className="text-white text-2xl font-black">
                   {formatCurrency(Math.abs(summary.expenses_out_cents))}
                 </p>
-                <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
-                  + transferencias
-                </p>
               </div>
-
-              {/* Ahorros */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <BuildingLibraryIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Ahorros
-                  </p>
-                </div>
-                <p className="text-[17px] font-bold text-blue-600 dark:text-blue-400">
-                  {formatCurrency(summary.savings_out_cents)}
-                </p>
-              </div>
-
-              {/* Reservas */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <ClipboardDocumentCheckIcon className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Reservas
-                  </p>
-                </div>
-                <p className="text-[17px] font-bold text-orange-600 dark:text-orange-400">
-                  {formatCurrency(summary.reserved_planned_cents)}
-                </p>
-                <p className="text-[11px] text-[#888] dark:text-neutral-500 mt-1">
-                  Pagos programados
-                </p>
-              </div>
-
-              {/* Disponible */}
-              <div className="glass-card-light dark:glass-card-dark rounded-2xl p-4 bg-gradient-to-br from-[#22d3ee]/10 to-[#06b6d4]/10 dark:from-[#4da3ff]/10 dark:to-[#3b82f6]/10 border-2 border-[#22d3ee]/30 dark:border-[#4da3ff]/30">
-                <div className="flex items-center gap-2 mb-2">
-                  <SparklesIcon className="w-5 h-5 text-[#22d3ee] dark:text-[#4da3ff]" />
-                  <p className="text-[11px] text-[#666] dark:text-neutral-400 uppercase tracking-wider">
-                    Disponible
-                  </p>
-                </div>
-                <p className={`text-[19px] font-bold ${summary.leftover_cents >= 0
-                    ? 'text-[#22d3ee] dark:text-[#4da3ff]'
-                    : 'text-red-600 dark:text-red-400'
-                  }`}>
-                  {formatCurrency(summary.leftover_cents)}
-                </p>
-              </div>
-            </div>
-
-            {/* CTA "Guardar en Savings" */}
-            {summary.leftover_cents > 0 && (
-              <div className="mt-4 glass-card-light dark:glass-card-dark rounded-2xl p-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white mb-1">
-                      💡 Tienes {formatCurrency(summary.leftover_cents)} disponible
-                    </p>
-                    <p className="text-[13px] text-[#666] dark:text-neutral-400">
-                      ¿Quieres guardar parte en ahorros?
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleOpenSavingsModal}
-                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 dark:from-green-600 dark:to-emerald-700 rounded-xl text-[15px] font-semibold text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5"
-                  >
-                    Guardar en Ahorros
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Transacciones */}
-        <div>
-          <h2 className="text-[13px] font-medium text-[#666] dark:text-neutral-400 uppercase tracking-wider mb-4">
-            Transacciones ({transactions.length})
-          </h2>
-
-          {transactions.length === 0 ? (
-            <div className="glass-card-light dark:glass-card-dark rounded-2xl p-8 text-center">
-              <p className="text-[17px] font-medium text-[#1a1a1a] dark:text-white mb-2">
-                No hay transacciones
-              </p>
-              <p className="text-[15px] text-[#666] dark:text-neutral-400">
-                No hay transacciones registradas en esta quincena
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Columna Ingresos */}
-              {incomeTransactions.length > 0 && (
-                <div className="glass-card-light dark:glass-card-dark rounded-2xl p-5">
-                  <p className="text-[13px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <BanknotesIcon className="w-5 h-5" /> Ingresos ({incomeTransactions.length})
-                  </p>
-                  <div className="space-y-2">
-                    {incomeTransactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        transaction={txn}
-                        formatCurrency={formatCurrency}
-                        formatDate={formatDate}
-                        getAccountName={getAccountName}
-                        getCategoryName={getCategoryName}
-                        getTransactionTypeInfo={getTransactionTypeInfo}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Columna Gastos */}
-              {expenseTransactions.length > 0 && (
-                <div className="glass-card-light dark:glass-card-dark rounded-2xl p-5">
-                  <p className="text-[13px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <ArchiveBoxIcon className="w-5 h-5" /> Gastos ({expenseTransactions.length})
-                  </p>
-                  <div className="space-y-2">
-                    {expenseTransactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        transaction={txn}
-                        formatCurrency={formatCurrency}
-                        formatDate={formatDate}
-                        getAccountName={getAccountName}
-                        getCategoryName={getCategoryName}
-                        getTransactionTypeInfo={getTransactionTypeInfo}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Columna Transferencias */}
-              {transferTransactions.length > 0 && (
-                <div className="glass-card-light dark:glass-card-dark rounded-2xl p-5">
-                  <p className="text-[13px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <ArrowPathIcon className="w-5 h-5" /> Transferencias ({transferTransactions.length})
-                  </p>
-                  <div className="space-y-2">
-                    {transferTransactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        transaction={txn}
-                        formatCurrency={formatCurrency}
-                        formatDate={formatDate}
-                        getAccountName={getAccountName}
-                        getCategoryName={getCategoryName}
-                        getTransactionTypeInfo={getTransactionTypeInfo}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Columna Ajustes */}
-              {adjustmentTransactions.length > 0 && (
-                <div className="glass-card-light dark:glass-card-dark rounded-2xl p-5">
-                  <p className="text-[13px] font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <ScaleIcon className="w-5 h-5" /> Ajustes ({adjustmentTransactions.length})
-                  </p>
-                  <div className="space-y-2">
-                    {adjustmentTransactions.map((txn) => (
-                      <TransactionRow
-                        key={txn.id}
-                        transaction={txn}
-                        formatCurrency={formatCurrency}
-                        formatDate={formatDate}
-                        getAccountName={getAccountName}
-                        getCategoryName={getCategoryName}
-                        getTransactionTypeInfo={getTransactionTypeInfo}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Columna Ahorros */}
-              {savingEntries.length > 0 && (
-                <div className="glass-card-light dark:glass-card-dark rounded-2xl p-5">
-                  <p className="text-[13px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <BuildingLibraryIcon className="w-5 h-5" /> Ahorros ({savingEntries.length})
-                  </p>
-                  <div className="space-y-2">
-                    {savingEntries.map((entry) => (
-                      <SavingEntryRow
-                        key={entry.id}
-                        entry={entry}
-                        formatCurrency={formatCurrency}
-                        formatDate={formatDate}
-                        getAccountName={getAccountName}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
+      </div>
 
-        {/* Modal "Guardar en Savings" */}
-        {showSavingsModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="glass-card-light dark:glass-card-dark rounded-2xl p-6 max-w-md w-full">
-              <h3 className="text-[19px] font-bold text-[#1a1a1a] dark:text-white mb-4">
-                Guardar en Ahorros
-              </h3>
+      {/* ============ CONTENT ============ */}
+      <div className="max-w-lg mx-auto px-5 -mt-16 pb-8">
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
+            <XMarkIcon
+              className="w-5 h-5 text-red-400 cursor-pointer shrink-0 mt-0.5"
+              onClick={() => setError(null)}
+            />
+            <p className="text-sm text-red-600 font-semibold">{error}</p>
+          </div>
+        )}
 
-              <form onSubmit={handleSubmit(onCreateSavingEntry)} className="space-y-4">
-                {/* Cuenta */}
+        {/* Resumen financiero */}
+        {summary && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              <div className="fintech-card p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icons.TrendingUp className="w-3.5 h-3.5 text-green-500" />
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Sueldo</p>
+                </div>
+                <p className="text-[14px] font-extrabold text-green-600">{formatCurrency(summary.gross_income_cents)}</p>
+              </div>
+              <div className="fintech-card p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icons.DollarCircle className="w-3.5 h-3.5 text-emerald-500" />
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Adicional</p>
+                </div>
+                <p className="text-[14px] font-extrabold text-emerald-600">{formatCurrency(summary.additional_income_cents)}</p>
+              </div>
+              <div className="fintech-card p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icons.TrendingDown className="w-3.5 h-3.5 text-red-500" />
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Gastos</p>
+                </div>
+                <p className="text-[14px] font-extrabold text-red-600">{formatCurrency(summary.expenses_out_cents)}</p>
+              </div>
+              <div className="fintech-card p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icons.PiggyBank className="w-3.5 h-3.5 text-blue-500" />
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Ahorros</p>
+                </div>
+                <p className="text-[14px] font-extrabold text-blue-600">{formatCurrency(summary.savings_out_cents)}</p>
+              </div>
+            </div>
+
+            {/* Disponible + CTA */}
+            <div className={`fintech-card p-4 mb-5 flex items-center justify-between ${
+              summary.leftover_cents > 0 ? 'border-[#d821f9]/20' : ''
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  summary.leftover_cents > 0 ? 'bg-purple-50' : 'bg-gray-100'
+                }`}>
+                  <SparklesIcon className={`w-5 h-5 ${
+                    summary.leftover_cents > 0 ? 'text-[#d821f9]' : 'text-gray-400'
+                  }`} />
+                </div>
                 <div>
-                  <label htmlFor="account_id" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">Disponible</p>
+                  <p className={`text-lg font-extrabold ${
+                    summary.leftover_cents >= 0 ? 'text-[#d821f9]' : 'text-red-500'
+                  }`}>
+                    {formatCurrency(summary.leftover_cents)}
+                  </p>
+                </div>
+              </div>
+              {summary.leftover_cents > 0 && (
+                <button
+                  onClick={handleOpenSavingsModal}
+                  className="px-4 py-2 fintech-btn-primary text-xs"
+                >
+                  Ahorrar
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ============ TRANSACCIONES POR TIPO ============ */}
+        <h2 className="text-base font-extrabold text-gray-800 mb-3">
+          Transacciones
+          <span className="text-gray-400 font-bold ml-1">({transactions.length})</span>
+        </h2>
+
+        {transactions.length === 0 && savingEntries.length === 0 ? (
+          <div className="fintech-card p-8 text-center">
+            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+              <Icons.CreditCard className="w-7 h-7 text-gray-300" />
+            </div>
+            <p className="text-sm font-bold text-gray-500">Sin transacciones</p>
+            <p className="text-xs text-gray-400 mt-1">No hay movimientos registrados en esta quincena</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Ingresos */}
+            {incomeTransactions.length > 0 && (
+              <TransactionGroup
+                title="Ingresos"
+                count={incomeTransactions.length}
+                iconBg="bg-green-50"
+                iconColor="text-green-500"
+                Icon={BanknotesIcon}
+                transactions={incomeTransactions}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getAccountName={getAccountName}
+                getCategoryName={getCategoryName}
+              />
+            )}
+
+            {/* Gastos */}
+            {expenseTransactions.length > 0 && (
+              <TransactionGroup
+                title="Gastos"
+                count={expenseTransactions.length}
+                iconBg="bg-red-50"
+                iconColor="text-red-500"
+                Icon={ArrowDownCircleIcon}
+                transactions={expenseTransactions}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getAccountName={getAccountName}
+                getCategoryName={getCategoryName}
+              />
+            )}
+
+            {/* Transferencias */}
+            {transferTransactions.length > 0 && (
+              <TransactionGroup
+                title="Transferencias"
+                count={transferTransactions.length}
+                iconBg="bg-blue-50"
+                iconColor="text-blue-500"
+                Icon={ArrowPathIcon}
+                transactions={transferTransactions}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getAccountName={getAccountName}
+                getCategoryName={getCategoryName}
+              />
+            )}
+
+            {/* Ajustes */}
+            {adjustmentTransactions.length > 0 && (
+              <TransactionGroup
+                title="Ajustes"
+                count={adjustmentTransactions.length}
+                iconBg="bg-amber-50"
+                iconColor="text-amber-500"
+                Icon={ScaleIcon}
+                transactions={adjustmentTransactions}
+                formatCurrency={formatCurrency}
+                formatDate={formatDate}
+                getAccountName={getAccountName}
+                getCategoryName={getCategoryName}
+              />
+            )}
+
+            {/* Ahorros */}
+            {savingEntries.length > 0 && (
+              <div className="fintech-card overflow-hidden">
+                <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+                  <div className={`w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center`}>
+                    <Icons.PiggyBank className="w-3.5 h-3.5 text-emerald-500" />
+                  </div>
+                  <p className="text-xs font-bold text-emerald-500 uppercase tracking-wide">
+                    Ahorros ({savingEntries.length})
+                  </p>
+                </div>
+                {savingEntries.map((entry, index) => {
+                  const isDeposit = entry.amount_cents > 0
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`flex items-center gap-4 px-5 py-3 ${
+                        index !== savingEntries.length - 1 ? 'border-b border-gray-100' : 'pb-4'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                        isDeposit ? 'bg-emerald-50' : 'bg-orange-50'
+                      }`}>
+                        {isDeposit
+                          ? <ArrowUpTrayIcon className="w-4 h-4 text-emerald-500" />
+                          : <ArrowDownTrayIcon className="w-4 h-4 text-orange-500" />
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-800 truncate">
+                          {entry.note || (isDeposit ? 'Deposito a ahorros' : 'Retiro de ahorros')}
+                        </p>
+                        <p className="text-xs text-gray-400 font-semibold">
+                          {formatDate(entry.entry_date)} · {getAccountName(entry.account_id)}
+                        </p>
+                      </div>
+                      <p className={`text-sm font-extrabold shrink-0 ${
+                        isDeposit ? 'text-emerald-500' : 'text-orange-500'
+                      }`}>
+                        {isDeposit ? '+' : ''}{formatCurrency(entry.amount_cents)}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============ MODAL GUARDAR EN SAVINGS ============ */}
+        {showSavingsModal && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center"
+            onClick={() => {
+              setShowSavingsModal(false)
+              reset()
+            }}
+          >
+            <div
+              className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-3xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-center pt-3 pb-1 md:hidden">
+                <div className="w-10 h-1 bg-gray-200 rounded-full" />
+              </div>
+
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+                      <Icons.PiggyBank className="w-5 h-5 text-green-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-gray-800">Guardar en Ahorros</h3>
+                      <p className="text-xs text-gray-400 font-semibold">
+                        Disponible: {formatCurrency(summary?.leftover_cents || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowSavingsModal(false)
+                      reset()
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    <XMarkIcon className="w-4 h-4 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmit(onCreateSavingEntry)} className="px-5 py-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                     Cuenta de Ahorro
                   </label>
                   <select
-                    id="account_id"
                     {...register('account_id', { valueAsNumber: true })}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
+                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
                   >
                     {accounts.map((account) => (
                       <option key={account.id} value={account.id}>
@@ -490,85 +488,95 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
                     ))}
                   </select>
                   {formErrors.account_id && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {formErrors.account_id.message}
-                    </p>
+                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{formErrors.account_id.message}</p>
                   )}
                 </div>
 
-                {/* Monto */}
+                {/* Meta de ahorro (opcional) */}
+                {savingGoals.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Meta de Ahorro <span className="text-gray-300 normal-case">(opc.)</span>
+                    </label>
+                    <select
+                      {...register('goal_id', {
+                        setValueAs: (v) => (v === '' || v === '0' ? null : Number(v)),
+                      })}
+                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
+                    >
+                      <option value="">Sin meta</option>
+                      {savingGoals.map((goal) => {
+                        const progress = goal.target_amount_cents > 0
+                          ? Math.min(100, Math.round(((goal.saved_cents || 0) / goal.target_amount_cents) * 100))
+                          : 0
+                        return (
+                          <option key={goal.id} value={goal.id}>
+                            {goal.name} ({progress}%)
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label htmlFor="amount_cents" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
                     Monto a Ahorrar
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666] dark:text-neutral-400 text-[15px]">
-                      $
-                    </span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
                     <input
-                      id="amount_cents"
                       type="number"
                       step="0.01"
                       {...register('amount_cents', {
                         setValueAs: (v) => (v === '' || v === null ? 0 : Math.round(parseFloat(v) * 100)),
                       })}
-                      className="glass-input w-full pl-8 pr-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
+                      className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
                       placeholder="0.00"
                     />
                   </div>
-                  <p className="mt-1 text-[11px] text-[#666] dark:text-neutral-500">
-                    Disponible: {formatCurrency(summary?.leftover_cents || 0)}
-                  </p>
                   {formErrors.amount_cents && (
-                    <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">
-                      {formErrors.amount_cents.message}
-                    </p>
+                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{formErrors.amount_cents.message}</p>
                   )}
                 </div>
 
-                {/* Fecha */}
-                <div>
-                  <label htmlFor="entry_date" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Fecha
-                  </label>
-                  <input
-                    id="entry_date"
-                    type="date"
-                    {...register('entry_date')}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] focus:outline-none transition-all duration-300"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Fecha</label>
+                    <input
+                      type="date"
+                      {...register('entry_date')}
+                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Nota <span className="text-gray-300 normal-case">(opc.)</span>
+                    </label>
+                    <input
+                      type="text"
+                      {...register('note')}
+                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
+                      placeholder="Nota"
+                    />
+                  </div>
                 </div>
 
-                {/* Nota */}
-                <div>
-                  <label htmlFor="note" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                    Nota (opcional)
-                  </label>
-                  <input
-                    id="note"
-                    type="text"
-                    {...register('note')}
-                    className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
-                    placeholder="Ej: Ahorro de quincena octubre"
-                  />
-                </div>
-
-                {/* Botones */}
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-3 pt-1">
                   <button
                     type="button"
                     onClick={() => {
                       setShowSavingsModal(false)
                       reset()
                     }}
-                    className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
+                    className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 dark:from-green-600 dark:to-emerald-700 rounded-2xl text-[15px] font-semibold text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
                   >
                     {isSubmitting ? 'Guardando...' : 'Guardar'}
                   </button>
@@ -582,81 +590,68 @@ export function PayPeriodDetail({ payPeriod, onClose }: PayPeriodDetailProps) {
   )
 }
 
-// Componente interno para mostrar una transacción
-function TransactionRow({
-  transaction,
+// Componente reutilizable para grupo de transacciones
+function TransactionGroup({
+  title,
+  count,
+  iconBg,
+  iconColor,
+  Icon,
+  transactions,
   formatCurrency,
   formatDate,
   getAccountName,
   getCategoryName,
-  getTransactionTypeInfo,
 }: {
-  transaction: Transaction
+  title: string
+  count: number
+  iconBg: string
+  iconColor: string
+  Icon: React.ElementType
+  transactions: Transaction[]
   formatCurrency: (cents: number) => string
   formatDate: (dateStr: string) => string
   getAccountName: (id: number) => string
   getCategoryName: (id: number | null) => string
-  getTransactionTypeInfo: (type: string) => { label: string; Icon: React.ElementType; color: string }
 }) {
-  const typeInfo = getTransactionTypeInfo(transaction.type)
-  const isPositive = transaction.amount_cents >= 0
-
   return (
-    <div className="bg-white/10 dark:bg-white/5 rounded-xl p-3 flex items-center justify-between">
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex-shrink-0 text-lg text-[#666] dark:text-[#aaa]">
-          <typeInfo.Icon className={`w-6 h-6 ${typeInfo.color.split(' ')[0]}`} />
+    <div className="fintech-card overflow-hidden">
+      <div className="flex items-center gap-2 px-5 pt-4 pb-2">
+        <div className={`w-7 h-7 rounded-full ${iconBg} flex items-center justify-center`}>
+          <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-[#1a1a1a] dark:text-white truncate">
-            {transaction.description || getCategoryName(transaction.category_id)}
-          </p>
-          <p className="text-[11px] text-[#666] dark:text-neutral-400">
-            {formatDate(transaction.txn_date)} • {getAccountName(transaction.account_id)}
-          </p>
-        </div>
+        <p className={`text-xs font-bold ${iconColor} uppercase tracking-wide`}>
+          {title} ({count})
+        </p>
       </div>
-      <p className={`text-[15px] font-bold flex-shrink-0 ml-2 ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-        }`}>
-        {isPositive ? '+' : ''}{formatCurrency(transaction.amount_cents)}
-      </p>
-    </div>
-  )
-}
-
-// Componente interno para mostrar una entrada de ahorro
-function SavingEntryRow({
-  entry,
-  formatCurrency,
-  formatDate,
-  getAccountName,
-}: {
-  entry: SavingEntry
-  formatCurrency: (cents: number) => string
-  formatDate: (dateStr: string) => string
-  getAccountName: (id: number) => string
-}) {
-  const isDeposit = entry.amount_cents > 0
-
-  return (
-    <div className="bg-white/10 dark:bg-white/5 rounded-xl p-3 flex items-center justify-between">
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex-shrink-0 text-lg">
-          {isDeposit ? <ArrowUpTrayIcon className="w-6 h-6 text-emerald-500" /> : <ArrowDownTrayIcon className="w-6 h-6 text-orange-500" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-[#1a1a1a] dark:text-white truncate">
-            {entry.note || (isDeposit ? 'Depósito a ahorros' : 'Retiro de ahorros')}
-          </p>
-          <p className="text-[11px] text-[#666] dark:text-neutral-400">
-            {formatDate(entry.entry_date)} • {getAccountName(entry.account_id)}
-          </p>
-        </div>
-      </div>
-      <p className={`text-[15px] font-bold flex-shrink-0 ml-2 ${isDeposit ? 'text-emerald-600 dark:text-emerald-400' : 'text-orange-600 dark:text-orange-400'
-        }`}>
-        {isDeposit ? '+' : ''}{formatCurrency(entry.amount_cents)}
-      </p>
+      {transactions.map((txn, index) => {
+        const isPositive = txn.amount_cents >= 0
+        return (
+          <div
+            key={txn.id}
+            className={`flex items-center gap-4 px-5 py-3 ${
+              index !== transactions.length - 1 ? 'border-b border-gray-100' : 'pb-4'
+            }`}
+          >
+            <div className={`w-8 h-8 rounded-full ${iconBg} flex items-center justify-center shrink-0`}>
+              <Icon className={`w-4 h-4 ${iconColor}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-gray-800 truncate">
+                {txn.description || getCategoryName(txn.category_id)}
+              </p>
+              <p className="text-xs text-gray-400 font-semibold truncate">
+                {formatDate(txn.txn_date)} · {getAccountName(txn.account_id)}
+              </p>
+            </div>
+            <p className={`text-sm font-extrabold shrink-0 ${
+              isPositive ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {isPositive ? '+' : ''}{formatCurrency(txn.amount_cents)}
+            </p>
+          </div>
+        )
+      })}
     </div>
   )
 }
