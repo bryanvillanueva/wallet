@@ -1,181 +1,268 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreateUserInputSchema, type CreateUserInput, usersApi, type User } from '../lib/api'
+import {
+  LoginInputSchema,
+  RegisterInputSchema,
+  authApi,
+  type LoginInput,
+  type RegisterInput,
+} from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
-import { LoadingBar } from '../components/LoadingBar'
+import { Icons } from '../components/Icons'
+import {
+  EnvelopeIcon,
+  LockClosedIcon,
+  UserIcon,
+  EyeIcon,
+  EyeSlashIcon,
+} from '@heroicons/react/24/outline'
+
+type AuthMode = 'login' | 'register'
 
 export function Onboarding() {
-  const [users, setUsers] = useState<User[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [mode, setMode] = useState<AuthMode>('login')
   const [error, setError] = useState<string | null>(null)
-  const { setActiveUser } = useAuthStore()
+  const [showPassword, setShowPassword] = useState(false)
+  const { login } = useAuthStore()
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm<CreateUserInput>({
-    resolver: zodResolver(CreateUserInputSchema),
+  // Login form
+  const loginForm = useForm<LoginInput>({
+    resolver: zodResolver(LoginInputSchema),
   })
 
-  // Cargar usuarios existentes
-  useEffect(() => {
-    loadUsers()
-  }, [])
+  // Register form
+  const registerForm = useForm<RegisterInput>({
+    resolver: zodResolver(RegisterInputSchema),
+  })
 
-  const loadUsers = async () => {
-    try {
-      setIsLoading(true)
-      const data = await usersApi.list()
-      setUsers(data)
-    } catch (err) {
-      console.error('Error loading users:', err)
-      setUsers([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const onCreateUser = async (data: CreateUserInput) => {
+  const onLogin = async (data: LoginInput) => {
     try {
       setError(null)
-      const response = await usersApi.create(data)
-      setActiveUser(response.id, data.name)
-      reset()
-      setShowCreateForm(false)
-      await loadUsers()
+      const res = await authApi.login(data)
+      login(res.token, res.user)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear usuario')
+      setError(err instanceof Error ? err.message : 'Error al iniciar sesion')
     }
   }
 
-  const onSelectUser = (user: User) => {
-    setActiveUser(user.id, user.name)
+  const onRegister = async (data: RegisterInput) => {
+    try {
+      setError(null)
+      const res = await authApi.register(data)
+      login(res.token, res.user)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al registrarse')
+    }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#e0f2fe] via-[#f0f9ff] to-[#dbeafe] dark:from-[#0f172a] dark:via-[#1e293b] dark:to-[#0c4a6e] flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <LoadingBar />
-        </div>
-      </div>
-    )
+  const switchMode = (newMode: AuthMode) => {
+    setMode(newMode)
+    setError(null)
+    setShowPassword(false)
+    loginForm.reset()
+    registerForm.reset()
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#e0f2fe] via-[#f0f9ff] to-[#dbeafe] dark:from-[#0f172a] dark:via-[#1e293b] dark:to-[#0c4a6e] p-6 flex flex-col items-center justify-center">
-      {/* Logo/Header */}
-      <div className="text-center mb-12">
-        <h1 className="text-3xl font-semibold text-[#1a1a1a] dark:text-white mb-2">Wallet App</h1>
-        <p className="text-[15px] text-[#666666] dark:text-neutral-400">
-          Gestiona tus finanzas de forma inteligente
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-[#d821f9] to-[#7a0fa8] flex flex-col items-center justify-center px-5 py-10">
+      {/* Logo */}
+      <div className="flex items-center gap-3 mb-10">
+        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+          <Icons.PiggyBank className="w-7 h-7 text-white" />
+        </div>
+        <div>
+          <h1 className="text-white text-2xl font-extrabold tracking-tight">Wallet</h1>
+          <p className="text-white/50 text-xs font-semibold">Gestiona tus finanzas</p>
+        </div>
       </div>
 
-      {/* Card principal */}
-      <div className="w-full max-w-md glass-card-light dark:glass-card-dark rounded-3xl p-8">
-        <h2 className="text-2xl font-semibold text-[#1a1a1a] dark:text-white mb-6">
-          {users.length === 0 ? 'Crear tu usuario' : 'Selecciona tu usuario'}
-        </h2>
+      {/* Card */}
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+        {/* Mode toggle */}
+        <div className="flex border-b border-gray-100">
+          <button
+            onClick={() => switchMode('login')}
+            className={`flex-1 py-4 text-sm font-bold transition-colors ${
+              mode === 'login'
+                ? 'text-[#d821f9] border-b-2 border-[#d821f9]'
+                : 'text-gray-400'
+            }`}
+          >
+            Iniciar Sesion
+          </button>
+          <button
+            onClick={() => switchMode('register')}
+            className={`flex-1 py-4 text-sm font-bold transition-colors ${
+              mode === 'register'
+                ? 'text-[#d821f9] border-b-2 border-[#d821f9]'
+                : 'text-gray-400'
+            }`}
+          >
+            Registrarse
+          </button>
+        </div>
 
-        {/* Error global */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-500/20 backdrop-filter backdrop-blur-xl border border-red-400/50 rounded-2xl">
-            <p className="text-[13px] text-red-700 dark:text-red-300 font-medium">{error}</p>
-          </div>
-        )}
+        <div className="p-6">
+          {/* Error */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-xs text-red-600 font-semibold">{error}</p>
+            </div>
+          )}
 
-        {/* Lista de usuarios existentes */}
-        {users.length > 0 && !showCreateForm && (
-          <div className="space-y-3 mb-6">
-            {users.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => onSelectUser(user)}
-                className="w-full p-4 glass-button rounded-2xl text-left transition-all duration-300 ease-out hover:-translate-y-1"
-              >
-                <p className="text-[15px] font-semibold text-[#1a1a1a] dark:text-white">{user.name}</p>
-                {user.email && (
-                  <p className="text-[13px] text-[#666666] dark:text-neutral-300 mt-1">{user.email}</p>
+          {/* ===== LOGIN FORM ===== */}
+          {mode === 'login' && (
+            <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Email
+                </label>
+                <div className="relative">
+                  <EnvelopeIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-300" />
+                  <input
+                    type="email"
+                    {...loginForm.register('email')}
+                    className="fintech-input w-full pl-10 pr-4 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="tu@email.com"
+                  />
+                </div>
+                {loginForm.formState.errors.email && (
+                  <p className="mt-1 text-xs text-red-500 font-semibold">
+                    {loginForm.formState.errors.email.message}
+                  </p>
                 )}
-              </button>
-            ))}
-          </div>
-        )}
+              </div>
 
-        {/* Formulario de creación */}
-        {(showCreateForm || users.length === 0) && (
-          <form onSubmit={handleSubmit(onCreateUser)} className="space-y-4">
-            {/* Campo Nombre */}
-            <div>
-              <label htmlFor="name" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                Nombre
-              </label>
-              <input
-                id="name"
-                type="text"
-                {...register('name')}
-                className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
-                placeholder="Tu nombre"
-              />
-              {errors.name && (
-                <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">{errors.name.message}</p>
-              )}
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <LockClosedIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-300" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    {...loginForm.register('password')}
+                    className="fintech-input w-full pl-10 pr-10 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="Tu contraseña"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="w-4.5 h-4.5 text-gray-400" />
+                    ) : (
+                      <EyeIcon className="w-4.5 h-4.5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+                {loginForm.formState.errors.password && (
+                  <p className="mt-1 text-xs text-red-500 font-semibold">
+                    {loginForm.formState.errors.password.message}
+                  </p>
+                )}
+              </div>
 
-            {/* Campo Email (opcional) */}
-            <div>
-              <label htmlFor="email" className="block text-[13px] font-medium text-[#555] dark:text-neutral-300 mb-2">
-                Email (opcional)
-              </label>
-              <input
-                id="email"
-                type="email"
-                {...register('email')}
-                className="glass-input w-full px-4 py-3 rounded-2xl text-[#1a1a1a] dark:text-white text-[15px] placeholder-[#999] dark:placeholder-neutral-400 focus:outline-none transition-all duration-300"
-                placeholder="tu@email.com"
-              />
-              {errors.email && (
-                <p className="mt-2 text-[13px] text-red-600 dark:text-red-400 font-medium">{errors.email.message}</p>
-              )}
-            </div>
-
-            {/* Botones */}
-            <div className="flex gap-3 pt-4">
-              {users.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  className="flex-1 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#555] dark:text-neutral-300"
-                >
-                  Cancelar
-                </button>
-              )}
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-[#22d3ee] to-[#06b6d4] dark:from-[#4da3ff] dark:to-[#3b82f6] rounded-2xl text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(34,211,238,0.4)] dark:shadow-[0_8px_30px_rgba(77,163,255,0.4)] hover:shadow-[0_12px_40px_rgba(34,211,238,0.6)] dark:hover:shadow-[0_12px_40px_rgba(77,163,255,0.6)] transition-all duration-300 ease-out hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loginForm.formState.isSubmitting}
+                className="w-full py-3.5 fintech-btn-primary text-sm font-bold mt-2"
               >
-                {isSubmitting ? 'Creando...' : 'Crear usuario'}
+                {loginForm.formState.isSubmitting ? 'Ingresando...' : 'Iniciar Sesion'}
               </button>
-            </div>
-          </form>
-        )}
+            </form>
+          )}
 
-        {/* Botón "Crear otro usuario" */}
-        {users.length > 0 && !showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full mt-4 px-4 py-3 glass-button rounded-2xl text-[15px] font-semibold text-[#22d3ee] dark:text-[#4da3ff]"
-          >
-            + Crear nuevo usuario
-          </button>
-        )}
+          {/* ===== REGISTER FORM ===== */}
+          {mode === 'register' && (
+            <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Nombre
+                </label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-300" />
+                  <input
+                    type="text"
+                    {...registerForm.register('name')}
+                    className="fintech-input w-full pl-10 pr-4 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="Tu nombre"
+                  />
+                </div>
+                {registerForm.formState.errors.name && (
+                  <p className="mt-1 text-xs text-red-500 font-semibold">
+                    {registerForm.formState.errors.name.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Email
+                </label>
+                <div className="relative">
+                  <EnvelopeIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-300" />
+                  <input
+                    type="email"
+                    {...registerForm.register('email')}
+                    className="fintech-input w-full pl-10 pr-4 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="tu@email.com"
+                  />
+                </div>
+                {registerForm.formState.errors.email && (
+                  <p className="mt-1 text-xs text-red-500 font-semibold">
+                    {registerForm.formState.errors.email.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <LockClosedIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-300" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    {...registerForm.register('password')}
+                    className="fintech-input w-full pl-10 pr-10 py-3 text-sm text-gray-800 font-semibold"
+                    placeholder="Minimo 6 caracteres"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="w-4.5 h-4.5 text-gray-400" />
+                    ) : (
+                      <EyeIcon className="w-4.5 h-4.5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+                {registerForm.formState.errors.password && (
+                  <p className="mt-1 text-xs text-red-500 font-semibold">
+                    {registerForm.formState.errors.password.message}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={registerForm.formState.isSubmitting}
+                className="w-full py-3.5 fintech-btn-primary text-sm font-bold mt-2"
+              >
+                {registerForm.formState.isSubmitting ? 'Creando cuenta...' : 'Crear Cuenta'}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
+
+      {/* Footer */}
+      <p className="mt-8 text-white/30 text-xs font-semibold">Wallet App v0.1.0</p>
     </div>
   )
 }

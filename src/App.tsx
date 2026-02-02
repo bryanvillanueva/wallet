@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from './stores/useAuthStore'
+import { onUnauthorized } from './lib/api'
 import { HealthBanner } from './components/HealthBanner'
 import { Onboarding } from './screens/Onboarding'
 import { Settings } from './screens/Settings'
@@ -36,11 +37,16 @@ const secondaryTabs: { key: Screen; label: string; Icon: React.ComponentType<{ c
 ]
 
 function App() {
-  const activeUserId = useAuthStore((state) => state.activeUserId)
+  const { token, logout } = useAuthStore()
   const [currentScreen, setCurrentScreen] = useState<Screen>('savings')
   const [showMore, setShowMore] = useState(false)
 
-  if (!activeUserId) {
+  // Registrar handler global para 401 (sesión expirada)
+  useEffect(() => {
+    onUnauthorized(() => logout())
+  }, [logout])
+
+  if (!token) {
     return <Onboarding />
   }
 

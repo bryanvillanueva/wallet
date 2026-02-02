@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { summaryApi, savingsApi, goalsApi, CreateSavingEntryInputSchema } from '../lib/api'
+import { summaryApi, savingsApi, goalsApi, payPeriodsApi, accountsApi, CreateSavingEntryInputSchema } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
 import { LoadingBar } from '../components/LoadingBar'
@@ -59,8 +59,8 @@ export function Summary() {
     try {
       setIsLoading(true)
       const [payPeriodsData, accountsData, goalsData] = await Promise.all([
-        fetch(`https://wallet-api-production-2e8a.up.railway.app/api/pay-periods/user/${activeUserId}`).then(r => r.json()),
-        fetch(`https://wallet-api-production-2e8a.up.railway.app/api/accounts/user/${activeUserId}`).then(r => r.json()),
+        payPeriodsApi.listByUser(activeUserId),
+        accountsApi.listByUser(activeUserId),
         goalsApi.listByUser(activeUserId),
       ])
 

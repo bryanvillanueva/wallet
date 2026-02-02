@@ -1,25 +1,40 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { AuthUser } from '../lib/api'
 
 interface AuthState {
+  token: string | null
+  user: AuthUser | null
   activeUserId: number | null
   activeUserName: string | null
-  setActiveUser: (userId: number | null, userName: string | null) => void
-  setActiveUserId: (userId: number | null) => void
-  clearActiveUser: () => void
+
+  login: (token: string, user: AuthUser) => void
+  logout: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
+      token: null,
+      user: null,
       activeUserId: null,
       activeUserName: null,
 
-      setActiveUser: (userId, userName) => set({ activeUserId: userId, activeUserName: userName }),
+      login: (token, user) =>
+        set({
+          token,
+          user,
+          activeUserId: user.id,
+          activeUserName: user.name,
+        }),
 
-      setActiveUserId: (userId) => set({ activeUserId: userId }),
-
-      clearActiveUser: () => set({ activeUserId: null, activeUserName: null }),
+      logout: () =>
+        set({
+          token: null,
+          user: null,
+          activeUserId: null,
+          activeUserName: null,
+        }),
     }),
     {
       name: 'wallet-auth-storage',

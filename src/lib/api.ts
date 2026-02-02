@@ -4,7 +4,7 @@ import { z } from 'zod'
 const BASE_URL = import.meta.env.VITE_API_BASE ?? 'https://wallet-api-production-2e8a.up.railway.app/api'
 
 // ============================================================
-// UTILITY: Fetch wrapper con manejo de errores
+// UTILITY: Fetch wrapper con manejo de errores + JWT
 // ============================================================
 
 class ApiError extends Error {
@@ -23,23 +23,49 @@ class ApiError extends Error {
   }
 }
 
+// Lee el token JWT del localStorage (Zustand persist)
+function getStoredToken(): string | null {
+  try {
+    const raw = localStorage.getItem('wallet-auth-storage')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.state?.token ?? null
+  } catch {
+    return null
+  }
+}
+
+// Callback global para manejar 401 (sesión expirada)
+let _onUnauthorized: (() => void) | null = null
+export function onUnauthorized(cb: () => void) {
+  _onUnauthorized = cb
+}
+
 async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
+  const token = getStoredToken()
 
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options?.headers,
       },
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
+
+      // Si hay token almacenado y recibimos 401, la sesión expiró
+      if (response.status === 401 && token && _onUnauthorized) {
+        _onUnauthorized()
+      }
+
       throw new ApiError(
         errorData?.message || `HTTP ${response.status}: ${response.statusText}`,
         response.status,
@@ -150,6 +176,79 @@ export const usersApi = {
   async list(): Promise<User[]> {
     const data = await apiFetch<User[]>('/users')
     return z.array(UserSchema).parse(data)
+  },
+}
+
+// ============================================================
+// AUTH: Autenticación JWT
+// ============================================================
+
+export const AuthUserSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  email: z.string(),
+  role: z.string(),
+  created_at: z.string().optional(),
+})
+
+export const AuthResponseSchema = z.object({
+  message: z.string(),
+  token: z.string(),
+  user: AuthUserSchema,
+})
+
+export const LoginInputSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(1, 'La contraseña es requerida'),
+})
+
+export const RegisterInputSchema = z.object({
+  name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+})
+
+export const ChangePasswordInputSchema = z.object({
+  current_password: z.string().min(1, 'La contraseña actual es requerida'),
+  new_password: z.string().min(6, 'La nueva contraseña debe tener al menos 6 caracteres'),
+})
+
+export type AuthUser = z.infer<typeof AuthUserSchema>
+export type AuthResponse = z.infer<typeof AuthResponseSchema>
+export type LoginInput = z.infer<typeof LoginInputSchema>
+export type RegisterInput = z.infer<typeof RegisterInputSchema>
+export type ChangePasswordInput = z.infer<typeof ChangePasswordInputSchema>
+
+export const authApi = {
+  async register(input: RegisterInput): Promise<AuthResponse> {
+    const validated = RegisterInputSchema.parse(input)
+    const data = await apiFetch<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return AuthResponseSchema.parse(data)
+  },
+
+  async login(input: LoginInput): Promise<AuthResponse> {
+    const validated = LoginInputSchema.parse(input)
+    const data = await apiFetch<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(validated),
+    })
+    return AuthResponseSchema.parse(data)
+  },
+
+  async me(): Promise<AuthUser> {
+    const data = await apiFetch<AuthUser>('/auth/me')
+    return AuthUserSchema.parse(data)
+  },
+
+  async changePassword(input: ChangePasswordInput): Promise<{ message: string }> {
+    const validated = ChangePasswordInputSchema.parse(input)
+    return apiFetch<{ message: string }>('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify(validated),
+    })
   },
 }
 
