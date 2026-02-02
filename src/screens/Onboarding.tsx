@@ -9,7 +9,6 @@ import {
   type RegisterInput,
 } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
-import { Icons } from '../components/Icons'
 import {
   EnvelopeIcon,
   LockClosedIcon,
