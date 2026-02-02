@@ -81,11 +81,9 @@ function App() {
         <HealthBanner />
         <div className="max-w-5xl mx-auto px-4 flex items-center h-14 gap-1">
           {/* Logo / Brand */}
-          <div className="flex items-center gap-2 mr-6">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#d821f9] to-[#a018c0] flex items-center justify-center">
-              <Icons.PiggyBank className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-base font-extrabold text-gray-800">Wallet</span>
+          <div className="flex items-center gap-2 mr-10 shrink-0">
+            <img src="/logo.png" alt="Kipo" className="w-8 h-8 object-contain" />
+            <span className="text-base font-extrabold text-gray-800">Kipo</span>
           </div>
 
           {/* Primary tabs */}

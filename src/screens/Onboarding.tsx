@@ -68,12 +68,10 @@ export function Onboarding() {
     <div className="min-h-screen bg-gradient-to-br from-[#d821f9] to-[#7a0fa8] flex flex-col items-center justify-center px-5 py-10">
       {/* Logo */}
       <div className="flex items-center gap-3 mb-10">
-        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-          <Icons.PiggyBank className="w-7 h-7 text-white" />
-        </div>
+        <img src="/logo.png" alt="Kipo" className="w-12 h-12 object-contain" />
         <div>
-          <h1 className="text-white text-2xl font-extrabold tracking-tight">Wallet</h1>
-          <p className="text-white/50 text-xs font-semibold">Gestiona tus finanzas</p>
+          <h1 className="text-white text-2xl font-extrabold tracking-tight">Kipo</h1>
+          <p className="text-white text-xs font-semibold">Gestiona tus finanzas</p>
         </div>
       </div>
 
@@ -262,7 +260,7 @@ export function Onboarding() {
       </div>
 
       {/* Footer */}
-      <p className="mt-8 text-white/30 text-xs font-semibold">Wallet App v0.1.0</p>
+      <p className="mt-8 text-white/30 text-xs font-semibold">Kipo v0.1.0 - By Shark</p>
     </div>
   )
 }

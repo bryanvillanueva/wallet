@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Personal finance management app (Wallet) built with React 19 + TypeScript + Vite. Uses a glassmorphism/liquid glass design system. Connects to a REST API backend hosted on Railway.
+Personal finance management app (Wallet) built with React 19 + TypeScript + Vite. Uses a modern fintech design system with purple/magenta accent. Connects to a REST API backend hosted on Railway.
 
 ## Commands
 
@@ -33,20 +33,31 @@ Two separate stores:
 - When `activeUserId` is null, renders `<Onboarding />` instead of main app
 - Screens are full-page views in `src/screens/`
 
-### Design System (Glassmorphism)
+### Design System (Fintech)
 CSS classes defined in `src/index.css`:
-- `.glass-card`, `.glass-card-light`, `.glass-card-dark` - Container styles with backdrop blur
-- `.glass-button` - Interactive buttons with hover effects
-- `.glass-input` - Form inputs with focus glow
 
-Color tokens (Tailwind `@theme`):
-- Light accent: `#22d3ee` (cyan)
-- Dark accent: `#4da3ff` (blue)
+**Active classes (fintech style):**
+- `.fintech-card` - Clean white cards with subtle shadow (`box-shadow: 0 2px 12px rgba(0,0,0,0.06)`)
+- `.fintech-input` - Inputs with `#f5f5f7` background, purple focus ring (`border-color: #d821f9`)
+- `.fintech-btn-primary` - Purple gradient button (`linear-gradient(135deg, #d821f9, #b01cd4)`)
+- `.fintech-btn-secondary` - Gray background button (`#f5f5f7`)
+
+**Legacy classes (still defined but rarely used):**
+- `.glass-card`, `.glass-card-light`, `.glass-card-dark` - Glassmorphism containers with backdrop blur
+- `.glass-button`, `.glass-input` - Glass-style interactive elements
+
+**Primary color:** `#d821f9` (magenta/purple)
+- Header gradients: `bg-gradient-to-br from-[#d821f9] to-[#a018c0]`
+- Onboarding gradient: `from-[#d821f9] to-[#7a0fa8]`
+- Active nav/tab indicators: `text-[#d821f9]`, `bg-[#d821f9]`
+
+**App background:** `#f5f5f7` (light gray), cards on `#ffffff`
 
 Common styling patterns:
-- Gradients for active states: `bg-gradient-to-r from-[#22d3ee] to-[#06b6d4]` (light) / `from-[#4da3ff] to-[#3b82f6]` (dark)
-- Rounded corners: `rounded-2xl` (standard), `rounded-3xl` (large)
-- Background gradient: `bg-gradient-to-br from-[#e0f2fe] via-[#f0f9ff] to-[#dbeafe]` (light)
+- Rounded corners: `rounded-2xl` (cards), `rounded-3xl` (auth card, modals), `rounded-[32px]` (headers)
+- Text hierarchy: `text-gray-800` (primary), `text-gray-400`–`text-gray-600` (secondary), `text-white` (on headers)
+- Account type colors: green (cash), blue (bank), orange (credit), purple (savings)
+- Goal category colors: each category has its own color (sky, orange, indigo, violet, etc.)
 
 ### Forms
 - React Hook Form + `@hookform/resolvers` for form state
