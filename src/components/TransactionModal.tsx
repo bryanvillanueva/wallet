@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   CreateTransactionInputSchema,
@@ -44,18 +45,11 @@ interface TransactionModalProps {
   defaultDescription?: string
 }
 
-type FormData = {
-  user_id: number
-  pay_period_id?: number | null
-  account_id: number
-  category_id?: number | null
-  type: 'income' | 'expense' | 'transfer' | 'adjustment'
-  amount_cents?: number
-  description?: string | null
-  txn_date: string
-  planned_payment_id?: number | null
-  counterparty_user_id?: number | null
-}
+const TransactionFormSchema = CreateTransactionInputSchema.extend({
+  amount_cents: CreateTransactionInputSchema.shape.amount_cents.optional(),
+})
+
+type FormData = z.infer<typeof TransactionFormSchema>
 
 export function TransactionModal({
   isOpen,
@@ -82,7 +76,7 @@ export function TransactionModal({
     reset,
     watch,
   } = useForm<FormData>({
-    resolver: zodResolver(CreateTransactionInputSchema),
+    resolver: zodResolver(TransactionFormSchema),
     defaultValues: {
       user_id: userId,
       type: defaultType,
