@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { UpsertPayPeriodInputSchema, payPeriodsApi, type PayPeriod } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { formatCurrency } from '../lib/format'
 import { LoadingBar } from '../components/LoadingBar'
 import { PayPeriodDetail } from '../components/PayPeriodDetail'
 import { Icons } from '../components/Icons'
@@ -87,13 +88,6 @@ export function PayPeriods() {
     }
   }
 
-  const formatCurrency = (cents: number | null) => {
-    if (cents === null || cents === undefined) return 'No registrado'
-    return new Intl.NumberFormat('es-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(cents / 100)
-  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no disponible'

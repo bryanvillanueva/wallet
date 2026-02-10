@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { CreateSavingEntryInputSchema, savingsApi, payPeriodsApi, accountsApi, goalsApi } from '../lib/api'
+import { savingsApi, payPeriodsApi, accountsApi, goalsApi } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { formatCurrency } from '../lib/format'
 import { LoadingBar } from '../components/LoadingBar'
+import { SavingsEntryModal } from '../components/SavingsEntryModal'
 import {
   PlusIcon,
   FunnelIcon,
@@ -27,33 +27,6 @@ export function Savings() {
   const [filterTo, setFilterTo] = useState<string>('')
   const [filterAccount, setFilterAccount] = useState<number | null>(null)
 
-  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
-  const [goalAmountInput, setGoalAmountInput] = useState<string>('')
-
-  type FormData = {
-    user_id: number
-    account_id: number
-    amount_cents: number
-    entry_date: string
-    pay_period_id?: number | null
-    note?: string | null
-    goal_id?: number | null
-    goal_amount_cents?: number | null
-  }
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm<FormData>({
-    resolver: zodResolver(CreateSavingEntryInputSchema),
-    defaultValues: {
-      user_id: activeUserId || 0,
-      pay_period_id: null,
-      note: '',
-    },
-  })
 
   useEffect(() => {
     if (activeUserId) {
@@ -107,44 +80,7 @@ export function Savings() {
     }
   }
 
-  const onCreateEntry = async (data: FormData) => {
-    try {
-      setError(null)
-      const goalAmountCents = goalAmountInput
-        ? Math.round(parseFloat(goalAmountInput) * 100)
-        : undefined
 
-      await savingsApi.createEntry({
-        user_id: activeUserId!,
-        account_id: data.account_id,
-        amount_cents: data.amount_cents,
-        entry_date: data.entry_date,
-        pay_period_id: data.pay_period_id,
-        note: data.note,
-        goal_id: selectedGoalId || undefined,
-        goal_amount_cents: selectedGoalId ? (goalAmountCents || undefined) : undefined,
-      })
-
-      await loadAllData()
-      reset({
-        user_id: activeUserId || 0,
-        pay_period_id: null,
-        note: '',
-      })
-      setSelectedGoalId(null)
-      setGoalAmountInput('')
-      setShowCreateForm(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear aporte')
-    }
-  }
-
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('es-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(cents / 100)
-  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no disponible'
@@ -245,197 +181,24 @@ export function Savings() {
         )}
 
         {/* Boton nuevo aporte */}
-        {!showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
-          >
-            <PlusIcon className="w-5 h-5" />
-            Nuevo Aporte / Retiro
-          </button>
-        )}
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
+        >
+          <PlusIcon className="w-5 h-5" />
+          Nuevo Aporte / Retiro
+        </button>
 
-        {/* ============ FORMULARIO ============ */}
-        {showCreateForm && (
-          <div className="fintech-card p-5 mb-5">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-extrabold text-gray-800">Nuevo Movimiento</h3>
-              <button
-                onClick={() => {
-                  setShowCreateForm(false)
-                  reset()
-                  setSelectedGoalId(null)
-                  setGoalAmountInput('')
-                }}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
-              >
-                <XMarkIcon className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit(onCreateEntry)} className="space-y-4">
-              {/* Cuenta */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Cuenta
-                </label>
-                <select
-                  {...register('account_id', { valueAsNumber: true })}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                >
-                  <option value="">Selecciona una cuenta</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.account_id && (
-                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.account_id.message}</p>
-                )}
-              </div>
-
-              {/* Monto */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Monto
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    {...register('amount_cents', {
-                      setValueAs: (v) => (v === '' || v === null ? 0 : Math.round(parseFloat(v) * 100)),
-                    })}
-                    className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
-                    placeholder="0.00"
-                  />
-                </div>
-                {errors.amount_cents && (
-                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.amount_cents.message}</p>
-                )}
-                <p className="mt-1 text-[11px] text-gray-400 font-medium">
-                  Positivo = deposito, negativo = retiro
-                </p>
-              </div>
-
-              {/* Fecha */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Fecha
-                </label>
-                <input
-                  type="date"
-                  {...register('entry_date')}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                />
-                {errors.entry_date && (
-                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.entry_date.message}</p>
-                )}
-              </div>
-
-              {/* Quincena */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Quincena <span className="text-gray-300 normal-case">(opcional)</span>
-                </label>
-                <select
-                  {...register('pay_period_id', {
-                    setValueAs: (v) => (v === '' || v === null ? null : parseInt(v)),
-                  })}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                >
-                  <option value="">Sin quincena</option>
-                  {payPeriods.map((pp) => (
-                    <option key={pp.id} value={pp.id}>
-                      {formatDate(pp.pay_date)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Nota */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Nota <span className="text-gray-300 normal-case">(opcional)</span>
-                </label>
-                <textarea
-                  {...register('note')}
-                  rows={2}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold resize-none"
-                  placeholder="Ej: Ahorro para vacaciones"
-                />
-              </div>
-
-              {/* Meta */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Asignar a una meta <span className="text-gray-300 normal-case">(opcional)</span>
-                </label>
-                <select
-                  value={selectedGoalId || ''}
-                  onChange={(e) => {
-                    const val = e.target.value ? parseInt(e.target.value) : null
-                    setSelectedGoalId(val)
-                    if (!val) setGoalAmountInput('')
-                  }}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                >
-                  <option value="">Sin meta</option>
-                  {savingGoals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Monto parcial para meta */}
-              {selectedGoalId && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Monto para la meta <span className="text-gray-300 normal-case">(opcional)</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={goalAmountInput}
-                      onChange={(e) => setGoalAmountInput(e.target.value)}
-                      className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
-                      placeholder="Vacio = monto completo"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Botones */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateForm(false)
-                    reset()
-                    setSelectedGoalId(null)
-                    setGoalAmountInput('')
-                  }}
-                  className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
-                >
-                  {isSubmitting ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        {/* ============ MODAL NUEVO APORTE ============ */}
+        <SavingsEntryModal
+          isOpen={showCreateForm}
+          onClose={() => setShowCreateForm(false)}
+          onSuccess={loadAllData}
+          accounts={accounts}
+          savingGoals={savingGoals}
+          payPeriods={payPeriods}
+          userId={activeUserId!}
+        />
 
         {/* ============ FILTROS ============ */}
         <div className="mb-4">

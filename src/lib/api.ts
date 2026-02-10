@@ -470,9 +470,25 @@ export const CreateTransactionResponseSchema = z.object({
   id: z.number(),
 })
 
+export const UpdateTransactionInputSchema = z.object({
+  user_id: z.number(),
+  pay_period_id: z.number().optional().nullable(),
+  account_id: z.number().optional(),
+  category_id: z.number().optional().nullable(),
+  type: z.enum(['income', 'expense', 'transfer', 'adjustment'], {
+    message: 'Tipo de transacción inválido',
+  }).optional(),
+  amount_cents: z.number().optional(),
+  description: z.string().optional().nullable(),
+  txn_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de fecha inválido (YYYY-MM-DD)').optional(),
+  planned_payment_id: z.number().optional().nullable(),
+  counterparty_user_id: z.number().optional().nullable(),
+})
+
 export type Transaction = z.infer<typeof TransactionSchema>
 export type CreateTransactionInput = z.infer<typeof CreateTransactionInputSchema>
 export type CreateTransactionResponse = z.infer<typeof CreateTransactionResponseSchema>
+export type UpdateTransactionInput = z.infer<typeof UpdateTransactionInputSchema>
 
 export interface ListTransactionsParams {
   userId: number
@@ -516,6 +532,19 @@ export const transactionsApi = {
       body: JSON.stringify(validated),
     })
     return CreateTransactionResponseSchema.parse(data)
+  },
+
+  /**
+   * PUT /api/transactions/:id
+   * Actualiza una transacción existente
+   */
+  async update(id: number, input: UpdateTransactionInput): Promise<Transaction> {
+    const validated = UpdateTransactionInputSchema.parse(input)
+    const data = await apiFetch<Transaction>(`/transactions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(validated),
+    })
+    return TransactionSchema.parse(data)
   },
 
   /**

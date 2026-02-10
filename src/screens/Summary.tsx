@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { summaryApi, savingsApi, goalsApi, payPeriodsApi, accountsApi, CreateSavingEntryInputSchema } from '../lib/api'
+import { summaryApi, goalsApi, payPeriodsApi, accountsApi, categoriesApi } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { formatCurrency } from '../lib/format'
 import { LoadingBar } from '../components/LoadingBar'
 import { PayPeriodDetail } from '../components/PayPeriodDetail'
+import { SavingsEntryModal } from '../components/SavingsEntryModal'
+import { TransactionModal } from '../components/TransactionModal'
 import { Icons } from '../components/Icons'
 import type { PayPeriodSummary, PayPeriod } from '../lib/api'
 import {
   XMarkIcon,
   ChevronRightIcon,
   SparklesIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline'
 
 export function Summary() {
   const { activeUserId } = useAuthStore()
-  const { payPeriods, setPayPeriods, accounts, setAccounts, savingGoals, setSavingGoals } = useWalletStore()
+  const { payPeriods, setPayPeriods, accounts, setAccounts, categories, setCategories, savingGoals, setSavingGoals } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [summaries, setSummaries] = useState<Map<number, PayPeriodSummary>>(new Map())
   const [error, setError] = useState<string | null>(null)
@@ -24,28 +26,14 @@ export function Summary() {
   // Modal "Guardar en Savings"
   const [showSavingsModal, setShowSavingsModal] = useState(false)
   const [selectedLeftover, setSelectedLeftover] = useState<number>(0)
+  const [selectedPayPeriodId, setSelectedPayPeriodId] = useState<number | null>(null)
+
+  // Modal "Nueva Transaccion"
+  const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [transactionPayPeriodId, setTransactionPayPeriodId] = useState<number | null>(null)
 
   // Modal detalle de quincena
   const [selectedPayPeriod, setSelectedPayPeriod] = useState<PayPeriod | null>(null)
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm({
-    resolver: zodResolver(CreateSavingEntryInputSchema),
-    defaultValues: {
-      user_id: activeUserId || 0,
-      account_id: 0,
-      amount_cents: 0,
-      entry_date: '',
-      pay_period_id: null,
-      note: '',
-      goal_id: null as number | null,
-      goal_amount_cents: null as number | null,
-    },
-  })
 
   useEffect(() => {
     if (activeUserId) {
@@ -58,15 +46,17 @@ export function Summary() {
 
     try {
       setIsLoading(true)
-      const [payPeriodsData, accountsData, goalsData] = await Promise.all([
+      const [payPeriodsData, accountsData, goalsData, categoriesData] = await Promise.all([
         payPeriodsApi.listByUser(activeUserId),
         accountsApi.listByUser(activeUserId),
         goalsApi.listByUser(activeUserId),
+        categoriesApi.list(activeUserId),
       ])
 
       setPayPeriods(payPeriodsData)
       setAccounts(accountsData)
       setSavingGoals(goalsData)
+      setCategories(categoriesData)
 
       const summariesMap = new Map<number, PayPeriodSummary>()
       await Promise.all(
@@ -90,50 +80,10 @@ export function Summary() {
 
   const handleOpenSavingsModal = (payPeriodId: number, leftoverCents: number) => {
     setSelectedLeftover(leftoverCents)
+    setSelectedPayPeriodId(payPeriodId)
     setShowSavingsModal(true)
-
-    const payPeriod = payPeriods.find(pp => pp.id === payPeriodId)
-    reset({
-      user_id: activeUserId || 0,
-      account_id: accounts.find(a => a.type === 'savings')?.id || accounts[0]?.id || 0,
-      amount_cents: leftoverCents,
-      entry_date: payPeriod?.pay_date || new Date().toISOString().split('T')[0],
-      pay_period_id: payPeriodId,
-      note: `Ahorro de quincena ${payPeriod?.pay_date || ''}`,
-      goal_id: null,
-      goal_amount_cents: null,
-    })
   }
 
-  const onCreateSavingEntry = async (data: any) => {
-    try {
-      setError(null)
-      const goalId = data.goal_id ? Number(data.goal_id) : null
-      await savingsApi.createEntry({
-        user_id: activeUserId!,
-        account_id: data.account_id,
-        amount_cents: data.amount_cents,
-        entry_date: data.entry_date,
-        pay_period_id: data.pay_period_id || null,
-        note: data.note || null,
-        goal_id: goalId,
-        goal_amount_cents: goalId ? data.amount_cents : null,
-      })
-
-      setShowSavingsModal(false)
-      reset()
-      await loadAllData()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar ahorro')
-    }
-  }
-
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('es-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(cents / 100)
-  }
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no disponible'
@@ -322,17 +272,30 @@ export function Summary() {
                             </p>
                           </div>
                         </div>
-                        {leftover > 0 && (
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleOpenSavingsModal(payPeriod.id, summary.leftover_cents)
+                              setTransactionPayPeriodId(payPeriod.id)
+                              setShowTransactionModal(true)
                             }}
-                            className="px-3 py-1.5 fintech-btn-primary text-xs"
+                            className="px-3 py-1.5 fintech-btn-secondary text-xs flex items-center gap-1"
                           >
-                            Ahorrar
+                            <PlusIcon className="w-3.5 h-3.5" />
+                            Transaccion
                           </button>
-                        )}
+                          {leftover > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenSavingsModal(payPeriod.id, summary.leftover_cents)
+                              }}
+                              className="px-3 py-1.5 fintech-btn-primary text-xs"
+                            >
+                              Ahorrar
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -347,167 +310,32 @@ export function Summary() {
         )}
 
         {/* ============ MODAL GUARDAR EN SAVINGS ============ */}
-        {showSavingsModal && (
-          <div
-            className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center"
-            onClick={() => {
-              setShowSavingsModal(false)
-              reset()
-            }}
-          >
-            <div
-              className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-3xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Handle bar (mobile) */}
-              <div className="flex justify-center pt-3 pb-1 md:hidden">
-                <div className="w-10 h-1 bg-gray-200 rounded-full" />
-              </div>
+        <SavingsEntryModal
+          isOpen={showSavingsModal}
+          onClose={() => setShowSavingsModal(false)}
+          onSuccess={loadAllData}
+          accounts={accounts}
+          savingGoals={savingGoals}
+          userId={activeUserId!}
+          defaultAccountId={accounts.find(a => a.type === 'savings')?.id}
+          defaultAmountCents={selectedLeftover}
+          defaultDate={payPeriods.find(pp => pp.id === selectedPayPeriodId)?.pay_date}
+          defaultPayPeriodId={selectedPayPeriodId}
+          defaultNote={`Ahorro de quincena ${payPeriods.find(pp => pp.id === selectedPayPeriodId)?.pay_date || ''}`}
+          subtitleText={`Disponible: ${formatCurrency(selectedLeftover)}`}
+        />
 
-              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-                      <Icons.PiggyBank className="w-5 h-5 text-green-500" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-gray-800">Guardar en Ahorros</h3>
-                      <p className="text-xs text-gray-400 font-semibold">
-                        Disponible: {formatCurrency(selectedLeftover)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowSavingsModal(false)
-                      reset()
-                    }}
-                    className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
-                  >
-                    <XMarkIcon className="w-4 h-4 text-gray-500" />
-                  </button>
-                </div>
-              </div>
-
-              <form onSubmit={handleSubmit(onCreateSavingEntry)} className="px-5 py-4 space-y-4">
-                {/* Cuenta */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Cuenta de Ahorro
-                  </label>
-                  <select
-                    {...register('account_id', { valueAsNumber: true })}
-                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                  >
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name} ({account.type})
-                      </option>
-                    ))}
-                  </select>
-                  {errors.account_id && (
-                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.account_id.message}</p>
-                  )}
-                </div>
-
-                {/* Meta de ahorro (opcional) */}
-                {savingGoals.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Meta de Ahorro <span className="text-gray-300 normal-case">(opc.)</span>
-                    </label>
-                    <select
-                      {...register('goal_id', {
-                        setValueAs: (v) => (v === '' || v === '0' ? null : Number(v)),
-                      })}
-                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                    >
-                      <option value="">Sin meta</option>
-                      {savingGoals.map((goal) => {
-                        const progress = goal.target_amount_cents > 0
-                          ? Math.min(100, Math.round(((goal.saved_cents || 0) / goal.target_amount_cents) * 100))
-                          : 0
-                        return (
-                          <option key={goal.id} value={goal.id}>
-                            {goal.name} ({progress}%)
-                          </option>
-                        )
-                      })}
-                    </select>
-                  </div>
-                )}
-
-                {/* Monto */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Monto a Ahorrar
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      {...register('amount_cents', {
-                        setValueAs: (v) => (v === '' || v === null ? 0 : Math.round(parseFloat(v) * 100)),
-                      })}
-                      className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  {errors.amount_cents && (
-                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.amount_cents.message}</p>
-                  )}
-                </div>
-
-                {/* Fecha y Nota */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Fecha
-                    </label>
-                    <input
-                      type="date"
-                      {...register('entry_date')}
-                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Nota <span className="text-gray-300 normal-case">(opc.)</span>
-                    </label>
-                    <input
-                      type="text"
-                      {...register('note')}
-                      className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                      placeholder="Nota"
-                    />
-                  </div>
-                </div>
-
-                {/* Botones */}
-                <div className="flex gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSavingsModal(false)
-                      reset()
-                    }}
-                    className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
-                  >
-                    {isSubmitting ? 'Guardando...' : 'Guardar'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* ============ MODAL NUEVA TRANSACCION ============ */}
+        <TransactionModal
+          isOpen={showTransactionModal}
+          onClose={() => setShowTransactionModal(false)}
+          onSuccess={loadAllData}
+          accounts={accounts}
+          categories={categories}
+          payPeriods={payPeriods}
+          userId={activeUserId!}
+          defaultPayPeriodId={transactionPayPeriodId}
+        />
       </div>
     </div>
   )

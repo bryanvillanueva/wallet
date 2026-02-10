@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CreateSavingGoalInputSchema, goalsApi, savingsApi } from '../lib/api'
+import { CreateSavingGoalInputSchema, goalsApi, savingsApi, accountsApi, payPeriodsApi } from '../lib/api'
 import type { EntryAllocations } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { formatCurrency } from '../lib/format'
 import { LoadingBar } from '../components/LoadingBar'
+import { SavingsEntryModal } from '../components/SavingsEntryModal'
 import { Icons, getGoalIconConfig } from '../components/Icons'
 import {
   PlusIcon,
@@ -18,7 +20,7 @@ import type { SavingGoal } from '../lib/api'
 
 export function SavingGoals() {
   const { activeUserId } = useAuthStore()
-  const { savingGoals, setSavingGoals, savingEntries, setSavingEntries } = useWalletStore()
+  const { savingGoals, setSavingGoals, savingEntries, setSavingEntries, accounts, setAccounts, payPeriods, setPayPeriods } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -28,6 +30,9 @@ export function SavingGoals() {
   const [entryAllocations, setEntryAllocations] = useState<Map<number, EntryAllocations>>(new Map())
   const [assignAmounts, setAssignAmounts] = useState<Map<number, string>>(new Map())
   const [loadingAllocations, setLoadingAllocations] = useState(false)
+
+  // Modal para ahorrar directo
+  const [savingsModalGoal, setSavingsModalGoal] = useState<SavingGoal | null>(null)
 
   const {
     register,
@@ -56,12 +61,16 @@ export function SavingGoals() {
 
     try {
       setIsLoading(true)
-      const [goalsData, entriesData] = await Promise.all([
+      const [goalsData, entriesData, accountsData, payPeriodsData] = await Promise.all([
         goalsApi.listByUser(activeUserId),
         savingsApi.listEntries({ userId: activeUserId }),
+        accountsApi.listByUser(activeUserId),
+        payPeriodsApi.listByUser(activeUserId),
       ])
       setSavingGoals(goalsData)
       setSavingEntries(entriesData)
+      setAccounts(accountsData)
+      setPayPeriods(payPeriodsData)
     } catch (err) {
       console.error('Error loading data:', err)
       setError(err instanceof Error ? err.message : 'Error al cargar datos')
@@ -174,12 +183,6 @@ export function SavingGoals() {
     }
   }
 
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('es-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(cents / 100)
-  }
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Sin fecha limite'
@@ -556,19 +559,26 @@ export function SavingGoals() {
                     </div>
                   )}
 
-                  {/* Botón asignar aportes */}
-                  <div className="px-5 pb-5">
+                  {/* Botones de accion */}
+                  <div className="px-5 pb-5 flex gap-2">
                     <button
                       onClick={() => openAssignModal(goal)}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-[#d821f9] bg-purple-50 hover:bg-purple-100 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-[#d821f9] bg-purple-50 hover:bg-purple-100 transition-colors"
                     >
                       <LinkIcon className="w-4 h-4" />
-                      Asignar Aportes
+                      Remover Aportes
                       {goal.assigned_entry_ids && (
                         <span className="text-xs bg-[#d821f9] text-white px-2 py-0.5 rounded-full font-bold">
                           {goal.assigned_entry_ids.split(',').length}
                         </span>
                       )}
+                    </button>
+                    <button
+                      onClick={() => setSavingsModalGoal(goal)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-[#d821f9] to-[#a018c0] hover:opacity-90 transition-opacity"
+                    >
+                      <Icons.PiggyBank className="w-4 h-4" />
+                      Ahorrar ahora
                     </button>
                   </div>
                 </div>
@@ -766,6 +776,20 @@ export function SavingGoals() {
             </div>
           </div>
         )}
+        {/* ============ MODAL AHORRAR AHORA ============ */}
+        <SavingsEntryModal
+          isOpen={!!savingsModalGoal}
+          onClose={() => setSavingsModalGoal(null)}
+          onSuccess={loadAllData}
+          accounts={accounts}
+          savingGoals={savingGoals}
+          payPeriods={payPeriods}
+          userId={activeUserId!}
+          defaultGoalId={savingsModalGoal?.id ?? null}
+          defaultDate={new Date().toISOString().split('T')[0]}
+          defaultNote={savingsModalGoal ? `Ahorro para ${savingsModalGoal.name}` : ''}
+          subtitleText={savingsModalGoal ? `Meta: ${savingsModalGoal.name}` : undefined}
+        />
       </div>
     </div>
   )

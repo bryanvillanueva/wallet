@@ -1,24 +1,25 @@
 import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  CreateTransactionInputSchema,
   transactionsApi,
   categoriesApi,
   accountsApi,
   payPeriodsApi,
   type ListTransactionsParams,
+  type Transaction,
 } from '../lib/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { formatCurrency } from '../lib/format'
 import { LoadingBar } from '../components/LoadingBar'
 import { Icons } from '../components/Icons'
+import { TransactionModal } from '../components/TransactionModal'
 import {
   PlusIcon,
   XMarkIcon,
   FunnelIcon,
   ChevronDownIcon,
   TrashIcon,
+  PencilSquareIcon,
   BanknotesIcon,
   ArrowPathIcon,
   ScaleIcon,
@@ -51,7 +52,8 @@ export function Transactions() {
     setPayPeriods,
   } = useWalletStore()
   const [isLoading, setIsLoading] = useState(true)
-  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,38 +61,6 @@ export function Transactions() {
   const [filterPayPeriod, setFilterPayPeriod] = useState<number | undefined>(undefined)
   const [filterDateFrom, setFilterDateFrom] = useState<string>('')
   const [filterDateTo, setFilterDateTo] = useState<string>('')
-
-  type FormData = {
-    user_id: number
-    pay_period_id?: number | null
-    account_id: number
-    category_id?: number | null
-    type: 'income' | 'expense' | 'transfer' | 'adjustment'
-    amount_cents: number
-    description?: string | null
-    txn_date: string
-    planned_payment_id?: number | null
-    counterparty_user_id?: number | null
-  }
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-    watch,
-  } = useForm<FormData>({
-    resolver: zodResolver(CreateTransactionInputSchema),
-    defaultValues: {
-      user_id: activeUserId || 0,
-      pay_period_id: null,
-      category_id: null,
-      type: 'expense',
-      txn_date: new Date().toISOString().split('T')[0],
-    },
-  })
-
-  const selectedType = watch('type')
 
   useEffect(() => {
     if (activeUserId) {
@@ -144,44 +114,6 @@ export function Transactions() {
     }
   }
 
-  const onCreateTransaction = async (data: FormData) => {
-    try {
-      setError(null)
-
-      let amountCents = data.amount_cents
-      if (data.type === 'expense' || data.type === 'transfer') {
-        amountCents = Math.abs(amountCents) * -1
-      } else {
-        amountCents = Math.abs(amountCents)
-      }
-
-      await transactionsApi.create({
-        user_id: activeUserId!,
-        pay_period_id: data.pay_period_id,
-        account_id: data.account_id,
-        category_id: data.category_id,
-        type: data.type,
-        amount_cents: amountCents,
-        description: data.description,
-        txn_date: data.txn_date,
-        planned_payment_id: data.planned_payment_id,
-        counterparty_user_id: data.counterparty_user_id,
-      })
-
-      await loadTransactions()
-      reset({
-        user_id: activeUserId || 0,
-        pay_period_id: null,
-        category_id: null,
-        type: 'expense',
-        txn_date: new Date().toISOString().split('T')[0],
-      })
-      setShowCreateForm(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear transaccion')
-    }
-  }
-
   const handleDeleteTransaction = async (id: number) => {
     if (!confirm('Estas seguro de eliminar esta transaccion?')) return
 
@@ -193,12 +125,16 @@ export function Transactions() {
     }
   }
 
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('es-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(cents / 100)
+  const handleEditTransaction = (txn: Transaction) => {
+    setEditingTransaction(txn)
+    setShowTransactionModal(true)
   }
+
+  const handleOpenCreate = () => {
+    setEditingTransaction(null)
+    setShowTransactionModal(true)
+  }
+
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no disponible'
@@ -227,8 +163,6 @@ export function Transactions() {
     if (!categoryId) return 'Sin categoria'
     return categories.find((c) => c.id === categoryId)?.name || `Categoria #${categoryId}`
   }
-
-  const filteredCategories = categories.filter((c) => c.kind === selectedType)
 
   // === YTD ===
   // Ingresos netos = quincenas + ingresos adicionales (transacciones tipo income)
@@ -343,210 +277,28 @@ export function Transactions() {
         )}
 
         {/* Boton nueva transaccion */}
-        {!showCreateForm && (
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
-          >
-            <PlusIcon className="w-5 h-5" />
-            Nueva Transaccion
-          </button>
-        )}
+        <button
+          onClick={handleOpenCreate}
+          className="w-full flex items-center justify-center gap-2 px-5 py-3.5 fintech-btn-primary text-[15px] mb-5"
+        >
+          <PlusIcon className="w-5 h-5" />
+          Nueva Transaccion
+        </button>
 
-        {/* ============ FORMULARIO ============ */}
-        {showCreateForm && (
-          <div className="fintech-card p-5 mb-5">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-extrabold text-gray-800">Nueva Transaccion</h3>
-              <button
-                onClick={() => {
-                  setShowCreateForm(false)
-                  reset()
-                }}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
-              >
-                <XMarkIcon className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit(onCreateTransaction)} className="space-y-4">
-              {/* Tipo - chips */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                  Tipo
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {TRANSACTION_TYPES.map((type) => {
-                    const isSelected = selectedType === type.value
-                    return (
-                      <label
-                        key={type.value}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'border-[#d821f9] bg-purple-50'
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          value={type.value}
-                          {...register('type')}
-                          className="hidden"
-                        />
-                        <div className={`w-7 h-7 rounded-full ${type.bg} flex items-center justify-center`}>
-                          <type.Icon className={`w-3.5 h-3.5 ${type.color}`} />
-                        </div>
-                        <span className={`text-xs font-bold ${isSelected ? 'text-[#d821f9]' : 'text-gray-600'}`}>
-                          {type.label}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-                {errors.type && (
-                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.type.message}</p>
-                )}
-              </div>
-
-              {/* Monto */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Monto
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    {...register('amount_cents', {
-                      setValueAs: (v) => Math.round(parseFloat(v) * 100),
-                    })}
-                    className="fintech-input w-full pl-8 pr-4 py-3 text-sm text-gray-800 font-semibold"
-                    placeholder="0.00"
-                  />
-                </div>
-                {errors.amount_cents && (
-                  <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.amount_cents.message}</p>
-                )}
-                <p className="mt-1 text-[11px] text-gray-400 font-medium">
-                  Ingresa el monto en dolares (ej: 25.50)
-                </p>
-              </div>
-
-              {/* Cuenta y Fecha en grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Cuenta
-                  </label>
-                  <select
-                    {...register('account_id', { valueAsNumber: true })}
-                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                  >
-                    <option value="">Selecciona</option>
-                    {accounts.filter((a) => a.is_active).map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.account_id && (
-                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.account_id.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Fecha
-                  </label>
-                  <input
-                    type="date"
-                    {...register('txn_date')}
-                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                  />
-                  {errors.txn_date && (
-                    <p className="mt-1.5 text-xs text-red-500 font-semibold">{errors.txn_date.message}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Categoria y Quincena en grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Categoria <span className="text-gray-300 normal-case">(opc.)</span>
-                  </label>
-                  <select
-                    {...register('category_id', {
-                      setValueAs: (v) => (v === '' ? null : Number(v)),
-                    })}
-                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                  >
-                    <option value="">Sin categoria</option>
-                    {filteredCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Quincena <span className="text-gray-300 normal-case">(opc.)</span>
-                  </label>
-                  <select
-                    {...register('pay_period_id', {
-                      setValueAs: (v) => (v === '' ? null : Number(v)),
-                    })}
-                    className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold"
-                  >
-                    <option value="">Sin quincena</option>
-                    {payPeriods.map((pp) => (
-                      <option key={pp.id} value={pp.id}>
-                        {formatDate(pp.pay_date)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Descripcion */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Descripcion <span className="text-gray-300 normal-case">(opcional)</span>
-                </label>
-                <textarea
-                  {...register('description')}
-                  rows={2}
-                  className="fintech-input w-full px-4 py-3 text-sm text-gray-800 font-semibold resize-none"
-                  placeholder="Ej: Compra en supermercado"
-                />
-              </div>
-
-              {/* Botones */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateForm(false)
-                    reset()
-                  }}
-                  className="flex-1 px-4 py-3 fintech-btn-secondary text-sm"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-3 fintech-btn-primary text-sm"
-                >
-                  {isSubmitting ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
+        {/* Modal de transaccion */}
+        <TransactionModal
+          isOpen={showTransactionModal}
+          onClose={() => {
+            setShowTransactionModal(false)
+            setEditingTransaction(null)
+          }}
+          onSuccess={loadTransactions}
+          accounts={accounts}
+          categories={categories}
+          payPeriods={payPeriods}
+          userId={activeUserId!}
+          transaction={editingTransaction}
+        />
 
         {/* ============ FILTROS ============ */}
         <div className="mb-4">
@@ -624,14 +376,12 @@ export function Transactions() {
             <p className="text-sm text-gray-400 mb-5">
               Registra tu primera transaccion para comenzar
             </p>
-            {!showCreateForm && (
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="px-6 py-3 fintech-btn-primary text-sm"
-              >
-                Registrar Primera Transaccion
-              </button>
-            )}
+            <button
+              onClick={handleOpenCreate}
+              className="px-6 py-3 fintech-btn-primary text-sm"
+            >
+              Registrar Primera Transaccion
+            </button>
           </div>
         ) : (
           <div className="fintech-card overflow-hidden">
@@ -674,6 +424,12 @@ export function Transactions() {
                     }`}>
                       {isPositive ? '+' : ''}{formatCurrency(txn.amount_cents)}
                     </p>
+                    <button
+                      onClick={() => handleEditTransaction(txn)}
+                      className="w-7 h-7 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+                    >
+                      <PencilSquareIcon className="w-3.5 h-3.5 text-gray-300 hover:text-gray-600" />
+                    </button>
                     <button
                       onClick={() => handleDeleteTransaction(txn.id)}
                       className="w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center transition-colors"
